@@ -2,53 +2,13 @@ import streamlit as st
 import requests
 import pandas as pd
 import json
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 
-DOMEGGOOK_API_KEY = "92b80f385760c74d150e84292746cfd7"
-
-def 도매꾹검색(검색어, 개수=20):
-    url = "https://domeggook.com/ssl/api/"
-    params = {
-        "ver": "4.1",
-        "mode": "getItemList",
-        "aid": DOMEGGOOK_API_KEY,
-        "market": "dome",
-        "om": "json",
-        "kw": 검색어,
-        "sz": 개수,
-        "pg": 1,
-        "so": "aa",
-        "dfos": "false"
-    }
-    response = requests.get(url, params=params)
-    data = response.json()
-    try:
-        items = data['domeggook']['list']['item']
-        if isinstance(items, dict):
-            items = [items]
-        결과 = []
-        for item in items:
-            가격 = int(item.get('price', 0))
-            배송구분 = item.get('deli', {}).get('who', '')
-            배송비 = int(item.get('deli', {}).get('fee', 0) or 0)
-            if 배송구분 == 'S':
-                배송비 = 0
-            결과.append({
-                "제목": item.get('title', ''),
-                "가격": 가격,
-                "배송비": 배송비,
-                "총가격": 가격 + 배송비,
-                "판매자": item.get('nick', item.get('id', '')),
-                "최소수량": item.get('unitQty', 1),
-                "링크": item.get('url', ''),
-                "출처": "도매꾹"
-            })
-        return sorted(결과, key=lambda x: x['총가격'])
-    except:
-        return []
-    
 NAVER_CLIENT_ID = "NmoPGi9LLT1pbGFRCQ45"
 NAVER_CLIENT_SECRET = "Z60X30C0Li"
+DOMEGGOOK_API_KEY = "92b80f385760c74d150e84292746cfd7"
+ELEVENST_API_KEY = "2d88124f88de34180fd7a6f3e1736988"
 
 st.set_page_config(page_title="위탁배송 대시보드", page_icon="🛒", layout="wide")
 
@@ -70,20 +30,81 @@ def 필터링(items, 배송비=0):
         if any(k in 제목 or k in item['mallName'] for k in 해외키워드):
             제외목록.append(제목)
             continue
-        상품목록.append({"제목": 제목, "가격": 가격, "총가격": 가격 + 배송비, "쇼핑몰": item['mallName'], "링크": item['link']})
+        상품목록.append({"제목": 제목, "가격": 가격, "총가격": 가격 + 배송비, "쇼핑몰": item['mallName'], "링크": item['link'], "출처": "네이버"})
     가격목록 = [s['가격'] for s in 상품목록]
     if 가격목록:
         평균가 = sum(가격목록) // len(가격목록)
         상품목록 = [s for s in 상품목록 if s['가격'] >= 평균가 * 0.05]
     return 상품목록, 제외목록
 
+def 도매꾹검색(검색어, 개수=20):
+    url = "https://domeggook.com/ssl/api/"
+    params = {
+        "ver": "4.1", "mode": "getItemList", "aid": DOMEGGOOK_API_KEY,
+        "market": "dome", "om": "json", "kw": 검색어,
+        "sz": 개수, "pg": 1, "so": "aa", "dfos": "false"
+    }
+    try:
+        data = requests.get(url, params=params).json()
+        items = data['domeggook']['list']['item']
+        if isinstance(items, dict):
+            items = [items]
+        결과 = []
+        for item in items:
+            가격 = int(item.get('price', 0))
+            배송구분 = item.get('deli', {}).get('who', '')
+            배송비 = int(item.get('deli', {}).get('fee', 0) or 0)
+            if 배송구분 == 'S':
+                배송비 = 0
+            결과.append({
+                "제목": item.get('title', ''),
+                "가격": 가격, "배송비": 배송비,
+                "총가격": 가격 + 배송비,
+                "쇼핑몰": item.get('nick', item.get('id', '')),
+                "최소수량": item.get('unitQty', 1),
+                "링크": item.get('url', ''),
+                "출처": "도매꾹"
+            })
+        return sorted(결과, key=lambda x: x['총가격'])
+    except:
+        return []
+
+def 검색_11번가(검색어, 개수=20):
+    url = "http://openapi.11st.co.kr/openapi/OpenApiService.tmall"
+    params = {
+        "key": ELEVENST_API_KEY, "apiCode": "ProductSearch",
+        "keyword": 검색어, "pageSize": 개수, "pageNum": 1, "sortCd": "20",
+    }
+    try:
+        response = requests.get(url, params=params)
+        content = response.content.decode('euc-kr', errors='ignore')
+        root = ET.fromstring(content)
+        상품목록 = []
+        for item in root.findall('.//Product'):
+            제목 = item.findtext('ProductName', '')
+            가격 = item.findtext('SalePrice', '0') or item.findtext('Price', '0')
+            배송비텍스트 = item.findtext('DeliveryFee', '0')
+            링크 = item.findtext('DetailPageUrl', '')
+            try:
+                가격 = int(str(가격).replace(',', '').strip())
+                배송비 = int(str(배송비텍스트).replace(',', '').strip()) if 배송비텍스트 else 0
+            except:
+                continue
+            if 가격 <= 0:
+                continue
+            상품목록.append({
+                "제목": 제목, "가격": 가격, "배송비": 배송비,
+                "총가격": 가격 + 배송비, "쇼핑몰": "11번가",
+                "링크": 링크, "출처": "11번가"
+            })
+        return sorted(상품목록, key=lambda x: x['총가격'])
+    except:
+        return []
+
 카테고리맵 = {
-    "패션의류": "50000000",
-    "패션잡화": "50000001",
-    "디지털/가전": "50000003",
-    "출산/육아": "50000004",
-    "식품": "50000006",
-    "화장품/미용": "50000008",
+    "패션의류": "50000000", "패션잡화": "50000001",
+    "디지털/가전": "50000003", "출산/육아": "50000004",
+    "식품": "50000006", "화장품/미용": "50000008",
     "가구/인테리어": "50000010",
 }
 
@@ -109,7 +130,9 @@ def 필터링(items, 배송비=0):
 st.sidebar.title("🛒 위탁배송 대시보드")
 메뉴 = st.sidebar.radio("메뉴 선택", [
     "🏠 홈",
+    "🔎 통합 최저가 검색",
     "🔍 가격 검색",
+    "📸 이미지로 검색",
     "📊 인기상품 분석",
     "🔥 트렌드 분석",
     "⚔️ 경쟁강도 확인",
@@ -133,10 +156,154 @@ if 메뉴 == "🏠 홈":
     with col2:
         st.success("✅ 마진계산\n플랫폼별 최소 판매가")
     with col3:
-        st.info("🤖 AI 분석\nClaude 크레딧 충전 후 사용")
+        st.success("✅ 통합검색\n네이버·도매꾹·11번가")
     st.divider()
     st.info("왼쪽 메뉴에서 원하는 기능을 선택하세요!")
 
+elif 메뉴 == "🔎 통합 최저가 검색":
+    st.title("🔎 통합 최저가 검색")
+    st.caption("네이버 · 도매꾹 · 11번가 동시 비교!")
+    상품명 = st.text_input("검색할 상품명", placeholder="예: 미키식판, 무선이어폰")
+
+    if st.button("통합 검색하기", type="primary"):
+        if 상품명:
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                with st.spinner("네이버 검색 중..."):
+                    data = 네이버검색(상품명)
+                    naver결과, _ = 필터링(data.get('items', []))
+                    if naver결과:
+                        정렬 = sorted(naver결과, key=lambda x: x['총가격'])
+                        st.success("✅ 네이버")
+                        st.metric("최저가", f"{정렬[0]['총가격']:,}원")
+                        st.write(f"**{정렬[0]['제목'][:25]}**")
+                        st.write(f"{정렬[0]['가격']:,}원 | 배송비 {정렬[0].get('배송비', 0):,}원")
+                        st.link_button("구매링크", 정렬[0]['링크'])
+                    else:
+                        st.error("네이버 결과 없음")
+
+            with col2:
+                with st.spinner("도매꾹 검색 중..."):
+                    dome결과 = 도매꾹검색(상품명)
+                    if dome결과:
+                        st.success("✅ 도매꾹")
+                        st.metric("최저가", f"{dome결과[0]['총가격']:,}원")
+                        st.write(f"**{dome결과[0]['제목'][:25]}**")
+                        st.write(f"{dome결과[0]['가격']:,}원 | 배송비 {dome결과[0]['배송비']:,}원")
+                        st.write(f"최소수량: {dome결과[0]['최소수량']}개")
+                        st.link_button("구매링크", dome결과[0]['링크'])
+                    else:
+                        st.error("도매꾹 결과 없음")
+
+            with col3:
+                with st.spinner("11번가 검색 중..."):
+                    eleven결과 = 검색_11번가(상품명)
+                    if eleven결과:
+                        st.success("✅ 11번가")
+                        st.metric("최저가", f"{eleven결과[0]['총가격']:,}원")
+                        st.write(f"**{eleven결과[0]['제목'][:25]}**")
+                        st.write(f"{eleven결과[0]['가격']:,}원 | 배송비 {eleven결과[0]['배송비']:,}원")
+                        st.link_button("구매링크", eleven결과[0]['링크'])
+                    else:
+                        st.error("11번가 결과 없음")
+
+            st.divider()
+            st.subheader("🏆 전체 통합 최저가 순위 TOP 10")
+            전체목록 = []
+            if naver결과:
+                전체목록 += sorted(naver결과, key=lambda x: x['총가격'])[:5]
+            if dome결과:
+                전체목록 += dome결과[:5]
+            if eleven결과:
+                전체목록 += eleven결과[:5]
+            전체정렬 = sorted(전체목록, key=lambda x: x['총가격'])[:10]
+            for i, s in enumerate(전체정렬, 1):
+                출처색 = "🟢" if s['출처'] == "네이버" else "🔵" if s['출처'] == "도매꾹" else "🔴"
+                c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+                c1.write(f"**{i}. {출처색} [{s['출처']}] {s['제목'][:30]}**")
+                c2.write(f"{s['가격']:,}원")
+                c3.write(f"총 {s['총가격']:,}원")
+                c4.link_button("구매", s['링크'])
+elif 메뉴 == "📸 이미지로 검색":
+    st.title("📸 이미지로 최저가 검색")
+    st.caption("상품 이미지를 올리면 자동으로 최저가를 찾아드려요!")
+
+    업로드파일 = st.file_uploader("상품 이미지 업로드", type=['jpg', 'jpeg', 'png', 'webp'])
+
+    if 업로드파일:
+        st.image(업로드파일, width=300, caption="업로드된 이미지")
+        st.divider()
+
+        # 수동 검색어 입력
+        st.info("💡 이미지를 보고 검색어를 직접 입력해주세요!")
+        검색어 = st.text_input("상품명 입력", placeholder="예: 미키마우스 실리콘 식판")
+
+        if st.button("이미지 상품 검색하기", type="primary"):
+            if 검색어:
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    with st.spinner("네이버 검색 중..."):
+                        data = 네이버검색(검색어)
+                        naver결과, _ = 필터링(data.get('items', []))
+                        if naver결과:
+                            정렬 = sorted(naver결과, key=lambda x: x['총가격'])
+                            st.success("✅ 네이버")
+                            st.metric("최저가", f"{정렬[0]['총가격']:,}원")
+                            st.write(f"**{정렬[0]['제목'][:25]}**")
+                            st.write(f"{정렬[0]['가격']:,}원 | 배송비 {정렬[0].get('배송비',0):,}원")
+                            st.link_button("구매링크", 정렬[0]['링크'])
+                        else:
+                            st.error("결과 없음")
+
+                with col2:
+                    with st.spinner("도매꾹 검색 중..."):
+                        dome결과 = 도매꾹검색(검색어)
+                        if dome결과:
+                            st.success("✅ 도매꾹")
+                            st.metric("최저가", f"{dome결과[0]['총가격']:,}원")
+                            st.write(f"**{dome결과[0]['제목'][:25]}**")
+                            st.write(f"{dome결과[0]['가격']:,}원 | 배송비 {dome결과[0]['배송비']:,}원")
+                            st.write(f"최소수량: {dome결과[0]['최소수량']}개")
+                            st.link_button("구매링크", dome결과[0]['링크'])
+                        else:
+                            st.error("결과 없음")
+
+                with col3:
+                    with st.spinner("11번가 검색 중..."):
+                        eleven결과 = 검색_11번가(검색어)
+                        if eleven결과:
+                            st.success("✅ 11번가")
+                            st.metric("최저가", f"{eleven결과[0]['총가격']:,}원")
+                            st.write(f"**{eleven결과[0]['제목'][:25]}**")
+                            st.write(f"{eleven결과[0]['가격']:,}원 | 배송비 {eleven결과[0]['배송비']:,}원")
+                            st.link_button("구매링크", eleven결과[0]['링크'])
+                        else:
+                            st.error("결과 없음")
+
+                st.divider()
+                st.subheader("🏆 통합 최저가 순위 TOP 10")
+                전체목록 = []
+                if naver결과:
+                    전체목록 += sorted(naver결과, key=lambda x: x['총가격'])[:5]
+                if dome결과:
+                    전체목록 += dome결과[:5]
+                if eleven결과:
+                    전체목록 += eleven결과[:5]
+                전체정렬 = sorted(전체목록, key=lambda x: x['총가격'])[:10]
+                for i, s in enumerate(전체정렬, 1):
+                    출처색 = "🟢" if s['출처'] == "네이버" else "🔵" if s['출처'] == "도매꾹" else "🔴"
+                    c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+                    c1.write(f"**{i}. {출처색} [{s['출처']}] {s['제목'][:30]}**")
+                    c2.write(f"{s['가격']:,}원")
+                    c3.write(f"총 {s['총가격']:,}원")
+                    c4.link_button("구매", s['링크'])
+            else:
+                st.warning("검색어를 입력해주세요!")
+
+    st.divider()
+    st.info("🤖 Claude API 크레딧 충전 후 AI가 이미지를 자동으로 분석해서 검색어를 찾아드릴 수 있어요!")
 elif 메뉴 == "🔍 가격 검색":
     st.title("🔍 상품 가격 검색")
     col1, col2 = st.columns([3, 1])
@@ -166,25 +333,6 @@ elif 메뉴 == "🔍 가격 검색":
                         c4.link_button("구매링크", s['링크'])
                 else:
                     st.error("조건에 맞는 상품이 없습니다.")
-                    # 도매꾹 비교
-                    st.divider()
-                    st.subheader("🏪 도매꾹 비교")
-                    with st.spinner("도매꾹 검색 중..."):
-                        도매꾹결과 = 도매꾹검색(상품명)
-                        if 도매꾹결과:
-                            d1, d2, d3 = st.columns(3)
-                            d1.metric("도매꾹 최저가", f"{도매꾹결과[0]['총가격']:,}원")
-                            d2.metric("최소 구매수량", f"{도매꾹결과[0]['최소수량']}개")
-                            d3.metric("개당 가격", f"{도매꾹결과[0]['가격']:,}원")
-                            st.subheader("🏆 도매꾹 TOP 5")
-                            for i, s in enumerate(도매꾹결과[:5], 1):
-                                c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
-                                c1.write(f"**{i}. {s['제목'][:35]}**")
-                                c2.write(f"{s['가격']:,}원")
-                                c3.write(f"배송비 {s['배송비']:,}원")
-                                c4.link_button("구매링크", s['링크'])
-                        else:
-                            st.info("도매꾹 검색 결과가 없습니다.")
 
 elif 메뉴 == "📊 인기상품 분석":
     st.title("📊 인기상품 분석")
@@ -336,12 +484,9 @@ elif 메뉴 == "💰 마진 계산기":
     st.divider()
     if st.button("계산하기", type="primary"):
         플랫폼목록 = {
-            "스마트스토어": 0.055,
-            "쿠팡": 0.108,
-            "G마켓": 0.12,
-            "옥션": 0.12,
-            "11번가": 0.09,
-            "카카오쇼핑": 0.05,
+            "스마트스토어": 0.055, "쿠팡": 0.108,
+            "G마켓": 0.12, "옥션": 0.12,
+            "11번가": 0.09, "카카오쇼핑": 0.05,
         }
         결과목록 = []
         for 플랫폼, 수수료 in 플랫폼목록.items():

@@ -119,12 +119,19 @@ def 자동모니터링시작():
     print(f"  ⏰ 실시간 모니터링 모드 가동!")
     print(f"  텔레그램 비서가 1시간마다 보고합니다.")
     print(f"{'='*45}")
-    # 시작 시 1회 즉시 실행
+    send_telegram("⏰ <b>자동 모니터링 시작!</b>\n1시간마다 가격을 체크합니다.")
     가격체크()
     schedule.every(1).hours.do(가격체크)
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
+    try:
+        while True:
+            schedule.run_pending()
+            time.sleep(60)
+    except KeyboardInterrupt:
+        send_telegram("⚠️ <b>모니터링이 중단되었습니다!</b>\n프로그램이 종료되었어요. 다시 실행해주세요!")
+        print("\n모니터링 중단 - 텔레그램으로 알림 전송 완료")
+    except Exception as e:
+        send_telegram(f"🚨 <b>오류로 모니터링 중단!</b>\n오류내용: {str(e)}\n다시 실행해주세요!")
+        print(f"\n오류 발생: {e}")
 
 if __name__ == "__main__":
     # 실행 시 테스트 메시지 전송 (연결 확인용)
