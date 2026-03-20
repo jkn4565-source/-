@@ -13,8 +13,8 @@ try:
     NAVER_CLIENT_SECRET = st.secrets["NAVER_CLIENT_SECRET"]
     DOMEGGOOK_API_KEY = st.secrets["DOMEGGOOK_API_KEY"]
     ELEVENST_API_KEY = st.secrets["ELEVENST_API_KEY"]
-except KeyError:
-    st.error("🔑 API 키가 설정되지 않았습니다. Streamlit Cloud의 Secrets 설정을 완료해주세요.")
+except Exception as e:
+    st.error(f"🔑 API 키 로드 실패! .streamlit/secrets.toml 파일을 확인하세요. 에러: {e}")
     st.stop()
 
 # ==========================================
@@ -24,92 +24,142 @@ st.set_page_config(page_title="위탁배송 마스터 대시보드", page_icon="
 
 st.markdown("""
 <style>
-    .main { background-color: #F8F9FA; }
-    [data-testid="stSidebar"] { background-color: #03C75A; color: white; }
-    .stButton>button { background-color: #03C75A; color: white; border-radius: 5px; width: 100%; }
-    .metric-card { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .main { background-color: #FFFFFF; }
+    [data-testid="stSidebar"] { background-color: #03C75A; }
+    [data-testid="stSidebar"] * { color: white !important; }
+    .stButton > button { background-color: #03C75A; color: white; border-radius: 4px; font-weight: bold; width: 100%; }
+    [data-testid="metric-container"] { background-color: #F0FFF7; border: 1px solid #B3F0D4; border-radius: 8px; padding: 15px; }
+    h1 { color: #03C75A !important; }
+    .stTable { border: 1px solid #eee; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🛰️ API 통신 함수 (기존 로직 유지 및 보완)
+# 🛰️ 데이터 수집 및 유틸리티 함수
 # ==========================================
-def naver_search(query, display=50):
+def 네이버검색(상품명, 개수=50):
     url = "https://openapi.naver.com/v1/search/shop.json"
     headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
-    params = {"query": query, "sort": "sim", "display": display}
+    params = {"query": 상품명, "sort": "sim", "display": 개수}
     return requests.get(url, headers=headers, params=params).json()
 
-def dome_search(query, size=20):
+def 도매꾹검색(검색어, 개수=20):
     url = "https://domeggook.com/ssl/api/"
-    params = {"ver": "4.1", "mode": "getItemList", "aid": DOMEGGOOK_API_KEY, "om": "json", "kw": query, "sz": size}
+    params = {"ver": "4.1", "mode": "getItemList", "aid": DOMEGGOOK_API_KEY, "market": "dome", "om": "json", "kw": 검색어, "sz": 개수}
     try:
         data = requests.get(url, params=params).json()
         items = data['domeggook']['list']['item']
         return [items] if isinstance(items, dict) else items
     except: return []
 
-# (기존 11번가 검색 및 필터링 함수 로직 동일하게 포함...)
+def 검색_11번가(검색어, 개수=20):
+    url = "http://openapi.11st.co.kr/openapi/OpenApiService.tmall"
+    params = {"key": ELEVENST_API_KEY, "apiCode": "ProductSearch", "keyword": 검색어, "pageSize": 개수}
+    try:
+        res = requests.get(url, params=params)
+        root = ET.fromstring(res.content.decode('euc-kr', errors='ignore'))
+        results = []
+        for item in root.findall('.//Product'):
+            price = int(item.findtext('SalePrice', '0').replace(',', ''))
+            results.append({"제목": item.findtext('ProductName', ''), "가격": price, "링크": item.findtext('DetailPageUrl', ''), "출처": "11번가"})
+        return results
+    except: return []
+
+def 필터링(items, 배송비=0):
+    상품목록, 해외키워드 = [], ['직구', '해외', '구매대행', 'USA', '중국', '헤외', '면세']
+    for item in items:
+        가격 = int(item['lprice'])
+        제목 = item['title'].replace('<b>', '').replace('</b>', '')
+        if 가격 <= 100 or any(k in 제목 or k in item['mallName'] for k in 해외키워드): continue
+        상품목록.append({"제목": 제목, "가격": 가격, "배송비": 배송비, "총가격": 가격 + 배송비, "쇼핑몰": item['mallName'], "링크": item['link'], "출처": "네이버"})
+    return 상품목록
 
 # ==========================================
 # 📱 사이드바 메뉴
 # ==========================================
-with st.sidebar:
-    st.title("🛒 SELLER HELPER")
-    menu = st.radio("메뉴 이동", ["🏠 홈", "🔎 통합 최저가 검색", "📊 인기상품 분석", "🔥 트렌드 분석", "💰 마진 계산기", "🛒 소싱 도우미"])
+메뉴 = st.sidebar.radio("메뉴 선택", ["🏠 홈", "🔎 통합 최저가 검색", "🔍 가격 검색", "📊 인기상품 분석", "🔥 트렌드 분석", "⚔️ 경쟁강도 확인", "💰 마진 계산기", "🛒 소싱 도우미"])
+
+# --- [🏠 홈] ---
+if 메뉴 == "🏠 홈":
+    st.title("🛒 위탁배송 자동화 컨트롤 타워")
+    st.markdown("### 사장님의 성공적인 위탁판매를 돕는 AI 비서입니다.")
     st.divider()
-    st.info("💡 1시간마다 실시간 업데이트 중")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("API 상태", "정상 가동")
+    c2.metric("보안 모드", "ON (Secrets 적용)")
+    c3.metric("최종 업데이트", datetime.now().strftime("%H:%M"))
+    st.info("왼쪽 메뉴를 선택하여 분석을 시작하세요!")
 
-# ==========================================
-# 🏠 홈화면
-# ==========================================
-if menu == "🏠 홈":
-    st.title("🚀 위탁배송 성공 비서")
-    st.subheader(f"현재 시각: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.info("🏷️ **오늘의 전략**\n계절성 상품의 마진율이 상승 중입니다. 소싱 도우미를 확인하세요!")
-    with col2:
-        st.success("✅ **시스템 정상**\n네이버/도매꾹 API 연동 완료")
-    with col3:
-        st.warning("⚠️ **주의사항**\n쿠팡 배송비 정책 변경 건을 확인하세요.")
-
-# ==========================================
-# 🔎 통합 최저가 검색 (핵심 기능 고도화)
-# ==========================================
-elif menu == "🔎 통합 최저가 검색":
-    st.title("🔎 플랫폼 통합 가격 비교")
-    target = st.text_input("분석할 상품명을 입력하세요", placeholder="예: 무선 가습기")
-    
-    if st.button("실시간 데이터 분석 시작"):
-        with st.spinner("플랫폼별 데이터를 수집 중입니다..."):
-            # 네이버, 도매꾹, 11번가 동시 호출 로직 수행
+# --- [🔎 통합 최저가 검색] ---
+elif 메뉴 == "🔎 통합 최저가 검색":
+    st.title("🔎 플랫폼 통합 최저가 비교")
+    kw = st.text_input("검색어 입력")
+    if st.button("실시간 비교 시작"):
+        with st.spinner("데이터 수집 중..."):
+            n_res = 필터링(네이버검색(kw).get('items', []))
+            d_res = 도매꾹검색(kw)
+            e_res = 검색_11번가(kw)
+            
             c1, c2, c3 = st.columns(3)
-            # 수집된 데이터를 바탕으로 Metric 카드 시각화
-            st.write("---")
-            st.subheader("🏆 전체 통합 가격 순위")
-            # 통합 테이블 출력
+            if n_res: c1.metric("네이버 최저가", f"{sorted(n_res, key=lambda x:x['가격'])[0]['가격']:,}원")
+            if d_res: c2.metric("도매꾹 최저가", f"{int(d_res[0]['price']):,}원")
+            if e_res: c3.metric("11번가 최저가", f"{sorted(e_res, key=lambda x:x['가격'])[0]['가격']:,}원")
+            
+            st.divider()
+            st.subheader("🏆 전체 상품 리스트 (최저가순)")
+            all_data = n_res + e_res # 도매꾹 데이터도 가공하여 합칠 수 있음
+            st.dataframe(pd.DataFrame(all_data).sort_values('가격'))
 
-# ==========================================
-# 💰 마진 계산기 (LaTeX 적용)
-# ==========================================
-elif menu == "💰 마진 계산기":
-    st.title("💰 정밀 마진 계산기")
-    st.caption("플랫폼 수수료와 배송비를 제외한 '진짜 수익'을 계산합니다.")
+# --- [📊 인기상품 분석] ---
+elif 메뉴 == "📊 인기상품 분석":
+    st.title("📊 가격 분포 및 인기 분석")
+    kw = st.text_input("분석할 키워드")
+    if st.button("시장 분석"):
+        res = 필터링(네이버검색(kw, 100).get('items', []))
+        if res:
+            prices = [item['가격'] for item in res]
+            df = pd.DataFrame(prices, columns=['가격'])
+            st.subheader("💰 가격 분포 그래프")
+            st.bar_chart(df.value_counts().sort_index())
+            st.metric("평균 시장가", f"{sum(prices)//len(prices):,}원")
+
+# --- [⚔️ 경쟁강도 확인] ---
+elif 메뉴 == "⚔️ 경쟁강도 확인":
+    st.title("⚔️ 키워드 경쟁강도 분석")
+    kw = st.text_input("키워드 입력")
+    if st.button("경쟁도 측정"):
+        data = 네이버검색(kw)
+        total = data.get('total', 0)
+        st.metric("전체 상품 수", f"{total:,}개")
+        if total > 100000: st.error("🔴 매우 치열 (진입 주의)")
+        elif total > 10000: st.warning("🟡 보통 (차별화 필요)")
+        else: st.success("🟢 블루오션 (적극 추천)")
+
+# --- [💰 마진 계산기] ---
+elif 메뉴 == "💰 마진 계산기":
+    st.title("💰 플랫폼별 정밀 마진 계산")
+    c1, c2, c3 = st.columns(3)
+    buy = c1.number_input("매입가", value=10000)
+    ship = c2.number_input("배송비", value=3000)
+    margin_goal = c3.slider("목표 마진율(%)", 5, 50, 20)
     
-    with st.container():
-        c1, c2 = st.columns(2)
-        with c1:
-            buy_price = st.number_input("매입가 (원)", value=10000, step=100)
-            target_margin = st.slider("목표 마진율 (%)", 0, 50, 20)
-        with c2:
-            ship_fee = st.number_input("배송비 (원)", value=3000, step=500)
-            platform = st.selectbox("판매 플랫폼", ["스마트스토어", "쿠팡", "11번가", "G마켓"])
-
-    # 마진 계산 수식 (LaTeX 사용)
-    st.latex(r"Profit = SalePrice - (BuyPrice + Shipping) - Fees")
+    st.latex(r"Profit = SalePrice - (BuyPrice + Shipping) - (Fees \times SalePrice)")
     
-    # 계산 로직 및 결과 출력...
+    fees = {"스마트스토어": 0.055, "쿠팡": 0.108, "11번가": 0.13, "G마켓": 0.12}
+    results = []
+    for p, f in fees.items():
+        # 마진율 공식 적용: 판매가 = (매입가+배송비) / (1 - 수수료 - 마진율)
+        target = (buy + ship) / (1 - f - (margin_goal/100))
+        results.append({"플랫폼": p, "수수료": f"{f*100}%", "권장판매가": f"{int(target):,}원"})
+    st.table(pd.DataFrame(results))
 
-# (나머지 인기상품, 트렌드, 소싱 도우미 메뉴 기능도 깔끔하게 정리하여 포함...)
+# --- [🛒 소싱 도우미] ---
+elif 메뉴 == "🛒 소싱 도우미":
+    st.title("🛒 계절별 황금 소싱 리스트")
+    month = datetime.now().month
+    seasons = {3:"봄", 4:"봄", 5:"봄", 6:"여름", 7:"여름", 8:"여름", 9:"가을", 10:"가을", 11:"가을", 12:"겨울", 1:"겨울", 2:"겨울"}
+    items = {"봄":["나들이용품", "캠핑의자", "미세먼지마스크"], "여름":["휴대용선풍기", "물놀이용품", "제습기"], "가을":["가습기", "등산용품", "무릎담요"], "겨울":["전기장판", "핫팩", "방한장갑"]}
+    
+    st.subheader(f"📅 지금은 {seasons[month]} 시즌입니다.")
+    for item in items[seasons[month]]:
+        st.info(f"👉 추천 키워드: {item}")
