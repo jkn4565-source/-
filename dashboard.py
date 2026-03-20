@@ -1,0 +1,366 @@
+import streamlit as st
+import requests
+import pandas as pd
+import json
+from datetime import datetime, timedelta
+
+DOMEGGOOK_API_KEY = "92b80f385760c74d150e84292746cfd7"
+
+def 도매꾹검색(검색어, 개수=20):
+    url = "https://domeggook.com/ssl/api/"
+    params = {
+        "ver": "4.1",
+        "mode": "getItemList",
+        "aid": DOMEGGOOK_API_KEY,
+        "market": "dome",
+        "om": "json",
+        "kw": 검색어,
+        "sz": 개수,
+        "pg": 1,
+        "so": "aa",
+        "dfos": "false"
+    }
+    response = requests.get(url, params=params)
+    data = response.json()
+    try:
+        items = data['domeggook']['list']['item']
+        if isinstance(items, dict):
+            items = [items]
+        결과 = []
+        for item in items:
+            가격 = int(item.get('price', 0))
+            배송구분 = item.get('deli', {}).get('who', '')
+            배송비 = int(item.get('deli', {}).get('fee', 0) or 0)
+            if 배송구분 == 'S':
+                배송비 = 0
+            결과.append({
+                "제목": item.get('title', ''),
+                "가격": 가격,
+                "배송비": 배송비,
+                "총가격": 가격 + 배송비,
+                "판매자": item.get('nick', item.get('id', '')),
+                "최소수량": item.get('unitQty', 1),
+                "링크": item.get('url', ''),
+                "출처": "도매꾹"
+            })
+        return sorted(결과, key=lambda x: x['총가격'])
+    except:
+        return []
+    
+NAVER_CLIENT_ID = "NmoPGi9LLT1pbGFRCQ45"
+NAVER_CLIENT_SECRET = "Z60X30C0Li"
+
+st.set_page_config(page_title="위탁배송 대시보드", page_icon="🛒", layout="wide")
+
+def 네이버검색(상품명, 개수=50):
+    url = "https://openapi.naver.com/v1/search/shop.json"
+    headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
+    params = {"query": 상품명, "sort": "sim", "display": 개수}
+    return requests.get(url, headers=headers, params=params).json()
+
+def 필터링(items, 배송비=0):
+    상품목록 = []
+    제외목록 = []
+    해외키워드 = ['직구', '해외', '구매대행', 'USA', '중국', '헤외', '면세']
+    for item in items:
+        가격 = int(item['lprice'])
+        제목 = item['title'].replace('<b>', '').replace('</b>', '')
+        if 가격 <= 100:
+            continue
+        if any(k in 제목 or k in item['mallName'] for k in 해외키워드):
+            제외목록.append(제목)
+            continue
+        상품목록.append({"제목": 제목, "가격": 가격, "총가격": 가격 + 배송비, "쇼핑몰": item['mallName'], "링크": item['link']})
+    가격목록 = [s['가격'] for s in 상품목록]
+    if 가격목록:
+        평균가 = sum(가격목록) // len(가격목록)
+        상품목록 = [s for s in 상품목록 if s['가격'] >= 평균가 * 0.05]
+    return 상품목록, 제외목록
+
+카테고리맵 = {
+    "패션의류": "50000000",
+    "패션잡화": "50000001",
+    "디지털/가전": "50000003",
+    "출산/육아": "50000004",
+    "식품": "50000006",
+    "화장품/미용": "50000008",
+    "가구/인테리어": "50000010",
+}
+
+묶음맵 = {
+    "묶음1: 패션의류 · 디지털/가전 · 출산/육아": [
+        {"name": "패션의류", "param": ["50000000"]},
+        {"name": "디지털/가전", "param": ["50000003"]},
+        {"name": "출산/육아", "param": ["50000004"]},
+    ],
+    "묶음2: 패션잡화 · 화장품/미용 · 식품": [
+        {"name": "패션잡화", "param": ["50000001"]},
+        {"name": "화장품/미용", "param": ["50000008"]},
+        {"name": "식품", "param": ["50000006"]},
+    ],
+    "묶음3: 스포츠/레저 · 가구/인테리어 · 출산/육아": [
+        {"name": "스포츠/레저", "param": ["50000007"]},
+        {"name": "가구/인테리어", "param": ["50000010"]},
+        {"name": "출산/육아", "param": ["50000004"]},
+    ],
+    "직접 선택": []
+}
+
+st.sidebar.title("🛒 위탁배송 대시보드")
+메뉴 = st.sidebar.radio("메뉴 선택", [
+    "🏠 홈",
+    "🔍 가격 검색",
+    "📊 인기상품 분석",
+    "🔥 트렌드 분석",
+    "⚔️ 경쟁강도 확인",
+    "💰 마진 계산기"
+])
+
+if 메뉴 == "🏠 홈":
+    st.title("🛒 위탁배송 자동화 대시보드")
+    st.caption(f"📅 {datetime.now().strftime('%Y년 %m월 %d일 %H시 %M분')} 기준")
+    st.divider()
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.success("✅ 가격 수집\n최저가·평균가 자동 수집")
+    with col2:
+        st.success("✅ 필터링\n해외배송·미끼상품 제외")
+    with col3:
+        st.success("✅ 트렌드\n네이버 인기검색어 분석")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.success("✅ 경쟁강도\n블루오션 상품 탐색")
+    with col2:
+        st.success("✅ 마진계산\n플랫폼별 최소 판매가")
+    with col3:
+        st.info("🤖 AI 분석\nClaude 크레딧 충전 후 사용")
+    st.divider()
+    st.info("왼쪽 메뉴에서 원하는 기능을 선택하세요!")
+
+elif 메뉴 == "🔍 가격 검색":
+    st.title("🔍 상품 가격 검색")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        상품명 = st.text_input("검색할 상품명", placeholder="예: 에어팟, 바람막이")
+    with col2:
+        배송비 = st.number_input("배송비", min_value=0, value=3000, step=500)
+    if st.button("검색하기", type="primary"):
+        if 상품명:
+            with st.spinner("검색 중..."):
+                data = 네이버검색(상품명)
+                상품목록, 제외목록 = 필터링(data.get('items', []), 배송비)
+                if 상품목록:
+                    최종가격 = [s['총가격'] for s in 상품목록]
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("최저가 (배송비포함)", f"{min(최종가격):,}원")
+                    c2.metric("평균가 (배송비포함)", f"{sum(최종가격)//len(최종가격):,}원")
+                    c3.metric("정상 상품 수", f"{len(상품목록)}개")
+                    st.divider()
+                    st.subheader("🏆 추천 상품 TOP 10")
+                    정렬상품 = sorted(상품목록, key=lambda x: x['총가격'])[:10]
+                    for i, s in enumerate(정렬상품, 1):
+                        c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+                        c1.write(f"**{i}. {s['제목'][:35]}**")
+                        c2.write(f"{s['가격']:,}원")
+                        c3.write(f"총 {s['총가격']:,}원")
+                        c4.link_button("구매링크", s['링크'])
+                else:
+                    st.error("조건에 맞는 상품이 없습니다.")
+                    # 도매꾹 비교
+                    st.divider()
+                    st.subheader("🏪 도매꾹 비교")
+                    with st.spinner("도매꾹 검색 중..."):
+                        도매꾹결과 = 도매꾹검색(상품명)
+                        if 도매꾹결과:
+                            d1, d2, d3 = st.columns(3)
+                            d1.metric("도매꾹 최저가", f"{도매꾹결과[0]['총가격']:,}원")
+                            d2.metric("최소 구매수량", f"{도매꾹결과[0]['최소수량']}개")
+                            d3.metric("개당 가격", f"{도매꾹결과[0]['가격']:,}원")
+                            st.subheader("🏆 도매꾹 TOP 5")
+                            for i, s in enumerate(도매꾹결과[:5], 1):
+                                c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+                                c1.write(f"**{i}. {s['제목'][:35]}**")
+                                c2.write(f"{s['가격']:,}원")
+                                c3.write(f"배송비 {s['배송비']:,}원")
+                                c4.link_button("구매링크", s['링크'])
+                        else:
+                            st.info("도매꾹 검색 결과가 없습니다.")
+
+elif 메뉴 == "📊 인기상품 분석":
+    st.title("📊 인기상품 분석")
+    인기검색어목록 = ["트위드자켓", "원피스", "트렌치코트", "바람막이", "블라우스", "무선이어폰", "텀블러", "청바지"]
+    검색어 = st.text_input("분석할 상품명", placeholder="예: 무선이어폰")
+    if st.button("분석하기", type="primary"):
+        if 검색어:
+            with st.spinner("분석 중..."):
+                data = 네이버검색(검색어, 개수=50)
+                상품목록, _ = 필터링(data.get('items', []))
+                if 상품목록:
+                    가격목록 = [s['가격'] for s in 상품목록]
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("최저가", f"{min(가격목록):,}원")
+                    c2.metric("평균가", f"{sum(가격목록)//len(가격목록):,}원")
+                    c3.metric("최고가", f"{max(가격목록):,}원")
+                    c4.metric("수집 상품", f"{len(상품목록)}개")
+                    st.divider()
+                    st.subheader("📦 가격대별 분포")
+                    구간 = {"1만원 이하": 0, "1~3만원": 0, "3~5만원": 0, "5~10만원": 0, "10만원 이상": 0}
+                    for s in 상품목록:
+                        g = s['가격']
+                        if g < 10000: 구간["1만원 이하"] += 1
+                        elif g < 30000: 구간["1~3만원"] += 1
+                        elif g < 50000: 구간["3~5만원"] += 1
+                        elif g < 100000: 구간["5~10만원"] += 1
+                        else: 구간["10만원 이상"] += 1
+                    st.bar_chart(pd.DataFrame.from_dict(구간, orient='index', columns=['상품수']))
+    st.divider()
+    st.subheader("🔥 오늘의 인기 검색어 현황")
+    if st.button("인기 검색어 가격 불러오기"):
+        with st.spinner("불러오는 중..."):
+            결과목록 = []
+            for kw in 인기검색어목록:
+                data = 네이버검색(kw, 개수=20)
+                상품목록, _ = 필터링(data.get('items', []))
+                if 상품목록:
+                    가격목록 = [s['가격'] for s in 상품목록]
+                    결과목록.append({"검색어": kw, "최저가": min(가격목록), "평균가": sum(가격목록)//len(가격목록), "상품수": len(상품목록)})
+            if 결과목록:
+                df = pd.DataFrame(결과목록)
+                st.dataframe(df, use_container_width=True)
+
+elif 메뉴 == "🔥 트렌드 분석":
+    st.title("🔥 네이버 쇼핑 트렌드")
+    묶음선택 = st.radio("카테고리 묶음 선택", list(묶음맵.keys()))
+    if 묶음선택 == "직접 선택":
+        카테고리선택 = st.multiselect(
+            "분석할 카테고리 선택 (최대 3개)",
+            list(카테고리맵.keys()),
+            default=["패션의류", "디지털/가전", "출산/육아"],
+            max_selections=3
+        )
+        선택카테고리 = [{"name": k, "param": [카테고리맵[k]]} for k in 카테고리선택]
+    else:
+        선택카테고리 = 묶음맵[묶음선택]
+    if st.button("트렌드 불러오기", type="primary"):
+        if not 선택카테고리:
+            st.warning("카테고리를 1개 이상 선택해주세요!")
+        else:
+            with st.spinner("트렌드 분석 중..."):
+                url = "https://openapi.naver.com/v1/datalab/shopping/categories"
+                headers = {
+                    "X-Naver-Client-Id": NAVER_CLIENT_ID,
+                    "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+                    "Content-Type": "application/json"
+                }
+                오늘 = datetime.now()
+                한달전 = 오늘 - timedelta(days=30)
+                body = {
+                    "startDate": 한달전.strftime("%Y-%m-%d"),
+                    "endDate": 오늘.strftime("%Y-%m-%d"),
+                    "timeUnit": "date",
+                    "category": 선택카테고리
+                }
+                response = requests.post(url, headers=headers, data=json.dumps(body))
+                data = response.json()
+                if 'results' in data:
+                    st.subheader("📈 분야별 트렌드 (최근 30일)")
+                    모든데이터 = {}
+                    for result in data['results']:
+                        for d in result['data']:
+                            날짜 = d['period']
+                            if 날짜 not in 모든데이터:
+                                모든데이터[날짜] = {}
+                            모든데이터[날짜][result['title']] = d['ratio']
+                    df = pd.DataFrame.from_dict(모든데이터, orient='index')
+                    df.index.name = '날짜'
+                    st.line_chart(df)
+                else:
+                    st.error("트렌드 데이터를 불러오지 못했습니다.")
+
+elif 메뉴 == "⚔️ 경쟁강도 확인":
+    st.title("⚔️ 경쟁강도 분석")
+    상품명 = st.text_input("분석할 상품명", placeholder="예: 무선이어폰")
+    if st.button("경쟁강도 분석", type="primary"):
+        if 상품명:
+            with st.spinner("분석 중..."):
+                data = 네이버검색(상품명, 개수=100)
+                전체상품수 = data.get('total', 0)
+                상품목록, _ = 필터링(data.get('items', []))
+                if 상품목록:
+                    가격목록 = [s['가격'] for s in 상품목록]
+                    쇼핑몰수 = len(set(s['쇼핑몰'] for s in 상품목록))
+                    if 전체상품수 >= 50000:
+                        등급 = "🔴 매우 치열"
+                        추천 = "⚠️ 경쟁이 너무 치열해요. 다른 상품을 찾아보세요!"
+                    elif 전체상품수 >= 10000:
+                        등급 = "🟠 치열"
+                        추천 = "🤔 차별화 전략이 필요해요"
+                    elif 전체상품수 >= 3000:
+                        등급 = "🟡 보통"
+                        추천 = "😊 적당한 경쟁이에요. 도전해볼 만해요!"
+                    elif 전체상품수 >= 500:
+                        등급 = "🟢 낮음"
+                        추천 = "✅ 경쟁이 적어요. 진입하기 좋아요!"
+                    else:
+                        등급 = "💎 블루오션"
+                        추천 = "🎯 블루오션! 지금 당장 시작하세요!"
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("전체 상품 수", f"{전체상품수:,}개")
+                    c2.metric("판매자 수", f"{쇼핑몰수}개")
+                    c3.metric("평균가", f"{sum(가격목록)//len(가격목록):,}원")
+                    st.divider()
+                    st.subheader(f"경쟁등급: {등급}")
+                    st.info(추천)
+                    st.divider()
+                    st.subheader("📦 주요 판매자")
+                    쇼핑몰카운트 = {}
+                    for s in 상품목록:
+                        쇼핑몰카운트[s['쇼핑몰']] = 쇼핑몰카운트.get(s['쇼핑몰'], 0) + 1
+                    df = pd.DataFrame(list(쇼핑몰카운트.items()), columns=['쇼핑몰', '상품수'])
+                    df = df.sort_values('상품수', ascending=False).head(10)
+                    st.bar_chart(df.set_index('쇼핑몰'))
+
+elif 메뉴 == "💰 마진 계산기":
+    st.title("💰 마진 계산기")
+    st.caption("플랫폼별 최소 판매가를 계산해드려요!")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        매입가 = st.number_input("매입가 (원)", min_value=0, value=10000, step=100)
+    with col2:
+        배송비 = st.number_input("배송비 (원)", min_value=0, value=3000, step=500)
+    with col3:
+        수량 = st.number_input("판매 수량", min_value=1, value=1, step=1)
+    with col4:
+        목표마진 = st.number_input("목표 마진율 (%)", min_value=0, value=20, step=1)
+    개당배송비 = 배송비 / 수량
+    st.divider()
+    if st.button("계산하기", type="primary"):
+        플랫폼목록 = {
+            "스마트스토어": 0.055,
+            "쿠팡": 0.108,
+            "G마켓": 0.12,
+            "옥션": 0.12,
+            "11번가": 0.09,
+            "카카오쇼핑": 0.05,
+        }
+        결과목록 = []
+        for 플랫폼, 수수료 in 플랫폼목록.items():
+            손익분기가 = (매입가 + 개당배송비) / (1 - 수수료 - 0.036)
+            목표마진가 = (매입가 + 개당배송비) / (1 - 수수료 - 0.036 - 목표마진 / 100)
+            결과목록.append({
+                "플랫폼": 플랫폼,
+                "수수료": f"{수수료*100:.1f}%",
+                "손익분기가": f"{손익분기가:,.0f}원",
+                "목표마진가": f"{목표마진가:,.0f}원",
+            })
+        c1, c2, c3 = st.columns(3)
+        c1.metric("매입가", f"{매입가:,}원")
+        c2.metric("개당 배송비", f"{개당배송비:,.0f}원")
+        c3.metric("목표 마진율", f"{목표마진}%")
+        st.divider()
+        df = pd.DataFrame(결과목록)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.divider()
+        if 수량 > 1:
+            st.info(f"💡 {수량}개 묶음 판매시 개당 배송비가 {배송비:,}원 → {개당배송비:,.0f}원으로 줄어들어요!")
+        st.caption("손익분기가 = 이 가격 아래로 팔면 손해 | 목표마진가 = 목표 마진율 달성 가격")
