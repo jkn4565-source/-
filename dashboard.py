@@ -196,6 +196,7 @@ st.sidebar.title("🛒 위탁배송 대시보드")
     "🔍 가격 검색",
     "📊 인기상품 분석",
     "🔥 트렌드 분석",
+    "🏷️ 키워드 트렌드 분석",
     "⚔️ 경쟁강도 확인",
     "💰 마진 계산기",
     "🛒 소싱 도우미",
@@ -285,10 +286,7 @@ elif 메뉴 == "🔎 통합 최저가 검색":
                 c2.write(f"{s['가격']:,}원")
                 c3.write(f"총 {s['총가격']:,}원")
                 c4.link_button("구매", s['링크'])
-            출처아이콘 = {
-                "G마켓": "🟡", "옥션": "🟠", "쿠팡": "🟠",
-                "11번가": "🔴", "스마트스토어": "🟢", "도매꾹": "🔵"
-}
+    
 elif 메뉴 == "📸 이미지로 검색":
     st.title("📸 이미지로 최저가 검색")
     st.caption("상품 이미지를 올리면 자동으로 최저가를 찾아드려요!")
@@ -450,6 +448,141 @@ elif 메뉴 == "🔥 트렌드 분석":
                     st.line_chart(df)
                 else:
                     st.error("트렌드 데이터를 불러오지 못했습니다.")
+elif 메뉴 == "🏷️ 키워드 트렌드 분석":
+    st.title("🏷️ 키워드 트렌드 분석")
+    st.caption("실제 검색량 기준 해시태그 추천 + 트렌드 분석!")
+
+    import hashlib, hmac, base64, time as time_module
+
+    NAVER_AD_CUSTOMER_ID = "3243643"
+    NAVER_AD_ACCESS_LICENSE = "0100000000432b8470231aa2f8b9c0e0ead165de5b9d08b05b12bc7c7b14b5834270295daa"
+    NAVER_AD_SECRET_KEY = "AQAAAABDK4RwIxqi+LnA4OrRZd5bJ54kuAilmVD9E13ktwNDIQ=="
+
+    def 검색량변환(값):
+        try:
+            v = str(값).replace(',', '').strip()
+            if v.startswith('<'):
+                return 0
+            return int(v)
+        except:
+            return 0
+
+    def 광고헤더(method, uri):
+        timestamp = str(int(time_module.time() * 1000))
+        message = f"{timestamp}.{method}.{uri}"
+        h = hmac.new(NAVER_AD_SECRET_KEY.encode("utf-8"), message.encode("utf-8"), hashlib.sha256)
+        signature = base64.b64encode(h.digest()).decode("utf-8")
+        return {
+            "Content-Type": "application/json; charset=UTF-8",
+            "X-Timestamp": timestamp,
+            "X-API-KEY": NAVER_AD_ACCESS_LICENSE,
+            "X-Customer": NAVER_AD_CUSTOMER_ID,
+            "X-Signature": signature
+        }
+
+    def 해시태그가져오기(키워드):
+        uri = "/keywordstool"
+        url = f"https://api.naver.com{uri}"
+        headers = 광고헤더("GET", uri)
+        params = {"hintKeywords": 키워드, "showDetail": 1}
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            data = response.json()
+            목록 = data.get('keywordList', [])
+            if not 목록:
+                return []
+            정렬 = sorted(목록, key=lambda x: 검색량변환(x.get('monthlyPcQcCnt', 0)) + 검색량변환(x.get('monthlyMobileQcCnt', 0)), reverse=True)
+            return [f"#{item['relKeyword']}" for item in 정렬[:8]]
+        except:
+            return []
+
+    키워드묶음 = {
+        "여름 패션": ["수영복", "반바지", "샌들", "선글라스", "비키니"],
+        "여름 용품": ["선크림", "물놀이", "아이스팩", "휴대용선풍기", "모기장"],
+        "육아용품": ["유아식판", "젖병", "기저귀", "유모차", "아기욕조"],
+        "주방용품": ["에어프라이어", "텀블러", "도시락통", "냄비", "프라이팬"],
+        "인테리어": ["캔들", "무드등", "화분", "쿠션", "러그"],
+    }
+
+    탭1, 탭2 = st.tabs(["🏷️ 해시태그 추천", "🔥 트렌드 분석"])
+
+    with 탭1:
+        st.subheader("🏷️ 실제 검색량 기준 해시태그 추천")
+        col1, col2 = st.columns(2)
+        with col1:
+            검색어 = st.text_input("키워드 입력", placeholder="예: 수영복, 에어프라이어")
+        with col2:
+            묶음선택 = st.selectbox("또는 묶음 선택", ["직접입력"] + list(키워드묶음.keys()))
+
+        if st.button("해시태그 추천받기", type="primary"):
+            분석키워드 = []
+            if 검색어:
+                분석키워드 = [k.strip() for k in 검색어.split(",")][:5]
+            elif 묶음선택 != "직접입력":
+                분석키워드 = 키워드묶음[묶음선택]
+
+            if 분석키워드:
+                for kw in 분석키워드:
+                    with st.spinner(f"{kw} 해시태그 분석 중..."):
+                        tags = 해시태그가져오기(kw)
+                        if tags:
+                            st.subheader(f"🏷️ {kw}")
+                            st.success(" ".join(tags))
+                            # 복사용
+                            st.code(" ".join(tags))
+                        else:
+                            st.warning(f"{kw} 결과 없음")
+
+    with 탭2:
+        st.subheader("🔥 트렌드 분석")
+        묶음선택2 = st.selectbox("카테고리 선택", list(키워드묶음.keys()), key="트렌드묶음")
+        직접입력2 = st.text_input("또는 직접 입력 (쉼표로 구분)", placeholder="수영복,선글라스,비키니")
+
+        if st.button("트렌드 분석하기", type="primary"):
+            분석목록 = [k.strip() for k in 직접입력2.split(",")][:5] if 직접입력2 else 키워드묶음[묶음선택2]
+
+            with st.spinner("트렌드 분석 중..."):
+                url = "https://openapi.naver.com/v1/datalab/search"
+                headers = {
+                    "X-Naver-Client-Id": NAVER_CLIENT_ID,
+                    "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+                    "Content-Type": "application/json"
+                }
+                오늘 = datetime.now()
+                한달전 = 오늘 - timedelta(days=30)
+                body = {
+                    "startDate": 한달전.strftime("%Y-%m-%d"),
+                    "endDate": 오늘.strftime("%Y-%m-%d"),
+                    "timeUnit": "week",
+                    "keywordGroups": [{"groupName": kw, "keywords": [kw]} for kw in 분석목록]
+                }
+                response = requests.post(url, headers=headers, data=json.dumps(body))
+                data = response.json()
+
+                if 'results' in data:
+                    결과 = []
+                    for result in data['results']:
+                        데이터 = result['data']
+                        if not 데이터:
+                            continue
+                        최근값 = 데이터[-1]['ratio'] if 데이터 else 0
+                        이전값 = 데이터[-2]['ratio'] if len(데이터) >= 2 else 최근값
+                        변화율 = ((최근값 - 이전값) / 이전값 * 100) if 이전값 > 0 else 0
+                        결과.append({
+                            "키워드": result['title'],
+                            "최근검색량": 최근값,
+                            "변화율": round(변화율, 1),
+                            "트렌드": "🔥 급상승" if 변화율 > 20 else "📈 상승" if 변화율 > 0 else "📉 하락"
+                        })
+
+                    결과.sort(key=lambda x: x['최근검색량'], reverse=True)
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("1위 키워드", 결과[0]['키워드'])
+                    c2.metric("최고 검색량", f"{결과[0]['최근검색량']:.1f}")
+                    c3.metric("트렌드", 결과[0]['트렌드'])
+                    st.divider()
+                    df = pd.DataFrame(결과)
+                    st.dataframe(df, use_container_width=True, hide_index=True)
 
 elif 메뉴 == "⚔️ 경쟁강도 확인":
     st.title("⚔️ 경쟁강도 분석")
@@ -1001,11 +1134,11 @@ elif 메뉴 == "🏪 상품 등록 도우미":
                     st.markdown(f"""
 | 항목 | 내용 |
 |------|------|
-| ✅ 상품명 | {제목[:50]} |
-| ✅ 판매가 | {스마트판매가:,}원 |
-| ✅ 재고수량 | 999개 (위탁배송) |
-| ✅ 배송방법 | 택배 |
-| ✅ 배송비 | {배송비:,}원 |
-| ✅ 최소구매수량 | {최소수량}개 |
-| ✅ 출고지 | 공급업체 직배송 |
+| 상품명 | {제목[:50]} |
+| 판매가 | {스마트판매가:,}원 |
+| 재고수량 | 999개 (위탁배송) |
+| 배송방법 | 택배 |
+| 배송비 | {배송비:,}원 |
+| 최소구매수량 | {최소수량}개 |
+| 출고지 | 공급업체 직배송 |
 """)
