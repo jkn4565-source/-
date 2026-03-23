@@ -200,7 +200,8 @@ st.sidebar.title("🛒 위탁배송 대시보드")
     "💰 마진 계산기",
     "🛒 소싱 도우미",
     "📒 수익 관리 장부",
-    "📦 재고/품절 알림"
+    "📦 재고/품절 알림",
+    "🏪 상품 등록 도우미"
 ])
 
 if 메뉴 == "🏠 홈":
@@ -913,3 +914,98 @@ elif 메뉴 == "📦 재고/품절 알림":
                     목록.pop(i)
                     재고목록저장(목록)
                     st.rerun()
+elif 메뉴 == "🏪 상품 등록 도우미":
+    st.title("🏪 상품 등록 도우미")
+    st.caption("도매꾹 상품번호 입력 → 스마트스토어/쿠팡 등록 형식 자동 변환!")
+
+    def 도매꾹상품상세조회(상품번호):
+        url = "https://domeggook.com/ssl/api/"
+        params = {
+            "ver": "4.1", "mode": "getItemList",
+            "aid": DOMEGGOOK_API_KEY, "market": "dome",
+            "om": "json", "itemNo": 상품번호
+        }
+        try:
+            data = requests.get(url, params=params).json()
+            items = data['domeggook']['list']['item']
+            if isinstance(items, dict):
+                items = [items]
+            return items[0] if items else None
+        except:
+            return None
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        상품번호 = st.text_input("도매꾹 상품번호", placeholder="예: 44049099")
+    with col2:
+        목표마진 = st.number_input("목표 마진율 (%)", min_value=1, value=30, step=1)
+
+    st.info("💡 도매꾹 상품 주소에서 숫자 부분이 상품번호예요!\n예: http://domeggook.com/44049099 → 44049099")
+
+    if st.button("상품 정보 불러오기", type="primary"):
+        if 상품번호:
+            with st.spinner("도매꾹 상품 조회 중..."):
+                item = 도매꾹상품상세조회(상품번호)
+
+                if not item:
+                    st.error("상품을 찾을 수 없어요. 상품번호를 확인해주세요!")
+                else:
+                    제목 = item.get('title', '')
+                    매입가 = int(item.get('price', 0))
+                    배송구분 = item.get('deli', {}).get('who', '')
+                    배송비 = int(item.get('deli', {}).get('fee', 0) or 0)
+                    if 배송구분 == 'S':
+                        배송비 = 0
+                    최소수량 = item.get('unitQty', 1)
+                    링크 = item.get('url', '')
+
+                    st.divider()
+                    st.subheader("📦 도매꾹 상품 정보")
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("매입가", f"{매입가:,}원")
+                    c2.metric("배송비", f"{배송비:,}원")
+                    c3.metric("최소수량", f"{최소수량}개")
+                    st.write(f"**상품명:** {제목}")
+                    st.link_button("도매꾹 상품 보기", 링크)
+
+                    st.divider()
+                    st.subheader("🏪 플랫폼별 등록 정보")
+
+                    수수료율맵 = {
+                        "스마트스토어": 0.055,
+                        "쿠팡": 0.108,
+                        "G마켓": 0.12,
+                        "옥션": 0.12,
+                        "11번가": 0.09,
+                        "카카오쇼핑": 0.05
+                    }
+
+                    결과목록 = []
+                    for 플랫폼, 수수료 in 수수료율맵.items():
+                        추천판매가 = int((매입가 + 배송비) / (1 - 수수료 - 0.036 - 목표마진/100))
+                        예상순이익 = int(추천판매가 * (목표마진/100))
+                        결과목록.append({
+                            "플랫폼": 플랫폼,
+                            "수수료": f"{수수료*100:.1f}%",
+                            "추천 판매가": f"{추천판매가:,}원",
+                            "예상 순이익": f"{예상순이익:,}원"
+                        })
+
+                    df = pd.DataFrame(결과목록)
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+
+                    st.divider()
+                    st.subheader("📋 스마트스토어 등록 체크리스트")
+                    스마트판매가 = int((매입가 + 배송비) / (1 - 0.055 - 0.036 - 목표마진/100))
+
+                    st.markdown(f"""
+| 항목 | 내용 |
+|------|------|
+| ✅ 상품명 | {제목[:50]} |
+| ✅ 판매가 | {스마트판매가:,}원 |
+| ✅ 재고수량 | 999개 (위탁배송) |
+| ✅ 배송방법 | 택배 |
+| ✅ 배송비 | {배송비:,}원 |
+| ✅ 최소구매수량 | {최소수량}개 |
+| ✅ 출고지 | 공급업체 직배송 |
+""")
