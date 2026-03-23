@@ -198,7 +198,8 @@ st.sidebar.title("🛒 위탁배송 대시보드")
     "🔥 트렌드 분석",
     "⚔️ 경쟁강도 확인",
     "💰 마진 계산기",
-    "🛒 소싱 도우미"
+    "🛒 소싱 도우미",
+    "📒 수익 관리 장부"
 ])
 
 if 메뉴 == "🏠 홈":
@@ -653,3 +654,148 @@ elif 메뉴 == "🛒 소싱 도우미":
                     c4.link_button("구매", s['링크'])
             else:
                 st.warning("마진 20% 이상 상품을 찾지 못했어요.")
+elif 메뉴 == "📒 수익 관리 장부":
+    st.title("📒 수익 관리 장부")
+    st.caption("판매 내역을 기록하고 수익을 자동으로 계산해드려요!")
+
+    import os
+
+    장부파일 = "장부.json"
+
+    def 장부불러오기():
+        if os.path.exists(장부파일):
+            with open(장부파일, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+
+    def 장부저장(데이터):
+        with open(장부파일, 'w', encoding='utf-8') as f:
+            json.dump(데이터, f, ensure_ascii=False, indent=2)
+
+    수수료율맵 = {
+        "스마트스토어": 0.055, "쿠팡": 0.108,
+        "G마켓": 0.12, "옥션": 0.12,
+        "11번가": 0.09, "카카오쇼핑": 0.05
+    }
+
+    탭1, 탭2, 탭3 = st.tabs(["📝 판매 등록", "📊 수익 현황", "📅 월별 분석"])
+
+    with 탭1:
+        st.subheader("📝 판매 내역 등록")
+        col1, col2 = st.columns(2)
+        with col1:
+            판매상품 = st.text_input("상품명", placeholder="예: 미키마우스 식판")
+            매입가 = st.number_input("매입가 (원)", min_value=0, value=5000, step=100)
+            배송비 = st.number_input("배송비 (원)", min_value=0, value=3000, step=500)
+        with col2:
+            판매가 = st.number_input("판매가 (원)", min_value=0, value=15000, step=100)
+            판매수량 = st.number_input("판매 수량", min_value=1, value=1, step=1)
+            플랫폼 = st.selectbox("판매 플랫폼", list(수수료율맵.keys()))
+            판매일 = st.date_input("판매일", value=datetime.now())
+
+        if st.button("판매 등록하기", type="primary"):
+            if 판매상품:
+                수수료 = 수수료율맵[플랫폼]
+                플랫폼수수료 = 판매가 * 수수료
+                결제수수료 = 판매가 * 0.036
+                순이익 = (판매가 - 매입가 - 배송비 - 플랫폼수수료 - 결제수수료) * 판매수량
+                매출 = 판매가 * 판매수량
+
+                장부 = 장부불러오기()
+                장부.append({
+                    "날짜": 판매일.strftime("%Y-%m-%d"),
+                    "상품명": 판매상품,
+                    "플랫폼": 플랫폼,
+                    "매입가": 매입가,
+                    "판매가": 판매가,
+                    "수량": 판매수량,
+                    "배송비": 배송비,
+                    "매출": round(매출),
+                    "순이익": round(순이익),
+                    "마진율": round((순이익 / 매출) * 100, 1) if 매출 > 0 else 0
+                })
+                장부저장(장부)
+
+                c1, c2, c3 = st.columns(3)
+                c1.metric("매출", f"{매출:,}원")
+                c2.metric("순이익", f"{순이익:,.0f}원")
+                c3.metric("마진율", f"{round((순이익/매출)*100, 1)}%")
+                st.success(f"✅ '{판매상품}' 판매 등록 완료!")
+
+    with 탭2:
+        st.subheader("📊 전체 수익 현황")
+        장부 = 장부불러오기()
+
+        if not 장부:
+            st.info("아직 등록된 판매 내역이 없어요. 판매 등록 탭에서 추가해주세요!")
+        else:
+            총매출 = sum(s['매출'] for s in 장부)
+            총순이익 = sum(s['순이익'] for s in 장부)
+            총판매건수 = len(장부)
+            평균마진율 = round(sum(s['마진율'] for s in 장부) / 총판매건수, 1)
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("총 매출", f"{총매출:,}원")
+            c2.metric("총 순이익", f"{총순이익:,}원")
+            c3.metric("총 판매건수", f"{총판매건수}건")
+            c4.metric("평균 마진율", f"{평균마진율}%")
+
+            st.divider()
+
+            # 플랫폼별 수익
+            st.subheader("🏪 플랫폼별 수익")
+            플랫폼별 = {}
+            for s in 장부:
+                p = s['플랫폼']
+                if p not in 플랫폼별:
+                    플랫폼별[p] = {"매출": 0, "순이익": 0, "건수": 0}
+                플랫폼별[p]["매출"] += s['매출']
+                플랫폼별[p]["순이익"] += s['순이익']
+                플랫폼별[p]["건수"] += 1
+
+            플랫폼df = pd.DataFrame([
+                {"플랫폼": k, "매출": f"{v['매출']:,}원", "순이익": f"{v['순이익']:,}원", "건수": f"{v['건수']}건"}
+                for k, v in 플랫폼별.items()
+            ])
+            st.dataframe(플랫폼df, use_container_width=True, hide_index=True)
+
+            st.divider()
+            st.subheader("📋 전체 판매 내역")
+            df = pd.DataFrame(장부)
+            df['매출'] = df['매출'].apply(lambda x: f"{x:,}원")
+            df['순이익'] = df['순이익'].apply(lambda x: f"{x:,}원")
+            df['마진율'] = df['마진율'].apply(lambda x: f"{x}%")
+            st.dataframe(df[['날짜', '상품명', '플랫폼', '판매가', '수량', '매출', '순이익', '마진율']], 
+                        use_container_width=True, hide_index=True)
+
+            if st.button("🗑️ 전체 내역 초기화", type="secondary"):
+                장부저장([])
+                st.success("초기화 완료!")
+                st.rerun()
+
+    with 탭3:
+        st.subheader("📅 월별 수익 분석")
+        장부 = 장부불러오기()
+
+        if not 장부:
+            st.info("아직 등록된 판매 내역이 없어요!")
+        else:
+            월별 = {}
+            for s in 장부:
+                월 = s['날짜'][:7]
+                if 월 not in 월별:
+                    월별[월] = {"매출": 0, "순이익": 0, "건수": 0}
+                월별[월]["매출"] += s['매출']
+                월별[월]["순이익"] += s['순이익']
+                월별[월]["건수"] += 1
+
+            월별df = pd.DataFrame([
+                {"월": k, "매출": v['매출'], "순이익": v['순이익'], "건수": v['건수']}
+                for k, v in sorted(월별.items())
+            ])
+
+            st.bar_chart(월별df.set_index('월')[['매출', '순이익']])
+            st.divider()
+            월별df['매출'] = 월별df['매출'].apply(lambda x: f"{x:,}원")
+            월별df['순이익'] = 월별df['순이익'].apply(lambda x: f"{x:,}원")
+            st.dataframe(월별df, use_container_width=True, hide_index=True)
