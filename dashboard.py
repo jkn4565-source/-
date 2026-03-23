@@ -10,7 +10,7 @@ NAVER_CLIENT_SECRET = "Z60X30C0Li"
 DOMEGGOOK_API_KEY = "92b80f385760c74d150e84292746cfd7"
 ELEVENST_API_KEY = "2d88124f88de34180fd7a6f3e1736988"
 
-st.set_page_config(page_title="위탁배송 대시보드", page_icon="🛒", layout="wide")
+st.set_page_config(page_title="위탁배송 대시보드", page_icon="🛒", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
