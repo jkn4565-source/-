@@ -201,7 +201,8 @@ st.sidebar.title("🛒 위탁배송 대시보드")
     "🛒 소싱 도우미",
     "📒 수익 관리 장부",
     "📦 재고/품절 알림",
-    "🏪 상품 등록 도우미"
+    "🏪 상품 등록 도우미",
+    "💎 블루오션 탐지"
 ])
 
 if 메뉴 == "🏠 홈":
@@ -1131,6 +1132,139 @@ elif 메뉴 == "🏪 상품 등록 도우미":
                     스마트판매가 = int((매입가 + 배송비) / (1 - 0.055 - 0.036 - 목표마진/100))
 
                     st.markdown(f"""
+                                elif 메뉴 == "💎 블루오션 탐지":
+    st.title("💎 블루오션 상품 탐지")
+    st.caption("경쟁 적은 블루오션 상품을 자동으로 찾아드려요!")
+
+    import os
+
+    블루키워드파일 = "블루오션키워드.json"
+
+    def 키워드불러오기():
+        if os.path.exists(블루키워드파일):
+            with open(블루키워드파일, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return ["아기방수턱받이", "실리콘이유식용기", "유아치발기세트",
+                "캠핑랜턴고리", "텐트팩가방", "캠핑수저세트",
+                "무선충전거치대차량용", "케이블클립정리", "노트북파우치14인치",
+                "고양이해먹", "강아지이동가방", "반려동물물병",
+                "주방서랍정리함", "냉장고정리용기", "싱크대수납",
+                "욕실선반흡착", "칫솔살균기", "면도기거치대",
+                "독서대접이식", "태블릿거치대침대"]
+
+    def 키워드저장(목록):
+        with open(블루키워드파일, 'w', encoding='utf-8') as f:
+            json.dump(목록, f, ensure_ascii=False, indent=2)
+
+    def send_telegram(text):
+        url = f"https://api.telegram.org/bot8797313748:AAFodzMuWNEBGLPnYIs4GgjcU3WJs-Sd3Bo/sendMessage"
+        params = {"chat_id": "6943475461", "text": text, "parse_mode": "HTML"}
+        try:
+            requests.post(url, params=params)
+        except:
+            pass
+
+    def 블루오션탐지(키워드):
+        data = 네이버검색(키워드, 개수=20)
+        전체상품수 = data.get('total', 0)
+        items = data.get('items', [])
+        if not items:
+            return None
+        가격목록 = []
+        for item in items:
+            try:
+                가격 = int(item['lprice'])
+                if 가격 > 100:
+                    가격목록.append(가격)
+            except:
+                continue
+        if not 가격목록:
+            return None
+        평균가 = sum(가격목록) // len(가격목록)
+        최저가 = min(가격목록)
+        if 전체상품수 < 500:
+            등급 = "💎 블루오션"
+        elif 전체상품수 < 3000:
+            등급 = "🟢 경쟁낮음"
+        elif 전체상품수 < 10000:
+            등급 = "🟡 보통"
+        else:
+            return None
+        return {"키워드": 키워드, "전체상품수": 전체상품수, "평균가": 평균가, "최저가": 최저가, "등급": 등급}
+
+    탭1, 탭2 = st.tabs(["🔍 블루오션 탐지", "⚙️ 키워드 관리"])
+
+    with 탭1:
+        st.subheader("🔍 블루오션 상품 탐지")
+        경쟁기준 = st.selectbox("탐지 기준", ["💎 블루오션만 (500개 미만)", "🟢 경쟁낮음 포함 (3000개 미만)", "🟡 보통 포함 (10000개 미만)"])
+
+        if st.button("💎 블루오션 탐지 시작", type="primary"):
+            키워드목록 = 키워드불러오기()
+            발견목록 = []
+            진행바 = st.progress(0)
+            상태창 = st.empty()
+
+            for i, 키워드 in enumerate(키워드목록):
+                상태창.write(f"🔍 {키워드} 분석 중... ({i+1}/{len(키워드목록)})")
+                결과 = 블루오션탐지(키워드)
+                if 결과:
+                    if "블루오션만" in 경쟁기준 and 결과['전체상품수'] < 500:
+                        발견목록.append(결과)
+                    elif "경쟁낮음" in 경쟁기준 and 결과['전체상품수'] < 3000:
+                        발견목록.append(결과)
+                    elif "보통" in 경쟁기준:
+                        발견목록.append(결과)
+                진행바.progress((i + 1) / len(키워드목록))
+
+            상태창.empty()
+
+            if 발견목록:
+                발견목록.sort(key=lambda x: x['전체상품수'])
+                c1, c2 = st.columns(2)
+                c1.metric("발견된 상품", f"{len(발견목록)}개")
+                c2.metric("최고 블루오션", 발견목록[0]['키워드'])
+                st.divider()
+                for r in 발견목록:
+                    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+                    c1.write(f"**{r['등급']} {r['키워드']}**")
+                    c2.write(f"상품수 {r['전체상품수']:,}개")
+                    c3.write(f"평균가 {r['평균가']:,}원")
+                    c4.write(f"최저가 {r['최저가']:,}원")
+
+                if st.button("📱 텔레그램으로 결과 전송", type="secondary"):
+                    메시지 = f"💎 <b>블루오션 탐지 결과!</b>\n📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+                    for r in 발견목록[:5]:
+                        메시지 += f"{r['등급']} <b>{r['키워드']}</b>\n상품수: {r['전체상품수']:,}개 | 평균가: {r['평균가']:,}원\n\n"
+                    send_telegram(메시지)
+                    st.success("✅ 텔레그램 전송 완료!")
+            else:
+                st.warning("블루오션 상품을 찾지 못했어요. 기준을 낮추거나 키워드를 추가해보세요!")
+
+    with 탭2:
+        st.subheader("⚙️ 키워드 관리")
+        키워드목록 = 키워드불러오기()
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            새키워드 = st.text_input("새 키워드 추가", placeholder="예: 아기욕조의자")
+        with col2:
+            if st.button("추가", type="primary"):
+                if 새키워드 and 새키워드 not in 키워드목록:
+                    키워드목록.append(새키워드.strip())
+                    키워드저장(키워드목록)
+                    st.success(f"✅ '{새키워드}' 추가!")
+                    st.rerun()
+
+        st.divider()
+        st.write(f"**현재 키워드 목록 ({len(키워드목록)}개)**")
+        for i, kw in enumerate(키워드목록):
+            c1, c2 = st.columns([4, 1])
+            c1.write(f"• {kw}")
+            if c2.button("삭제", key=f"del_kw_{i}"):
+                키워드목록.pop(i)
+                키워드저장(키워드목록)
+                st.rerun()
+
 | 항목 | 내용 |
 |------|------|
 | 상품명 | {제목[:50]} |
