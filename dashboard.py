@@ -33,7 +33,6 @@ st.markdown("""
     hr { border-color: #03C75A; }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
