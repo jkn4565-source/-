@@ -199,7 +199,8 @@ st.sidebar.title("🛒 위탁배송 대시보드")
     "⚔️ 경쟁강도 확인",
     "💰 마진 계산기",
     "🛒 소싱 도우미",
-    "📒 수익 관리 장부"
+    "📒 수익 관리 장부",
+    "📦 재고/품절 알림"
 ])
 
 if 메뉴 == "🏠 홈":
@@ -799,3 +800,116 @@ elif 메뉴 == "📒 수익 관리 장부":
             월별df['매출'] = 월별df['매출'].apply(lambda x: f"{x:,}원")
             월별df['순이익'] = 월별df['순이익'].apply(lambda x: f"{x:,}원")
             st.dataframe(월별df, use_container_width=True, hide_index=True)
+elif 메뉴 == "📦 재고/품절 알림":
+    st.title("📦 재고/품절 알림")
+    st.caption("도매꾹 공급처 품절 시 텔레그램으로 즉시 알림!")
+
+    import os
+
+    재고파일 = "재고모니터링.json"
+
+    def 재고목록불러오기():
+        if os.path.exists(재고파일):
+            with open(재고파일, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+
+    def 재고목록저장(목록):
+        with open(재고파일, 'w', encoding='utf-8') as f:
+            json.dump(목록, f, ensure_ascii=False, indent=2)
+
+    def 도매꾹상품조회(상품번호):
+        url = "https://domeggook.com/ssl/api/"
+        params = {
+            "ver": "4.1", "mode": "getItemList",
+            "aid": DOMEGGOOK_API_KEY, "market": "dome",
+            "om": "json", "itemNo": 상품번호
+        }
+        try:
+            data = requests.get(url, params=params).json()
+            items = data['domeggook']['list']['item']
+            if isinstance(items, dict):
+                items = [items]
+            return items[0] if items else None
+        except:
+            return None
+
+    def send_telegram(text):
+        url = f"https://api.telegram.org/bot8797313748:AAFodzMuWNEBGLPnYIs4GgjcU3WJs-Sd3Bo/sendMessage"
+        params = {"chat_id": "6943475461", "text": text, "parse_mode": "HTML"}
+        try:
+            requests.post(url, params=params)
+        except:
+            pass
+
+    탭1, 탭2 = st.tabs(["📋 모니터링 목록", "➕ 상품 등록"])
+
+    with 탭2:
+        st.subheader("➕ 재고 모니터링 상품 등록")
+        st.info("💡 도매꾹 상품 주소에서 숫자 부분이 상품번호예요!\n예: http://domeggook.com/44049099 → 상품번호: 44049099")
+        col1, col2 = st.columns(2)
+        with col1:
+            상품번호 = st.text_input("도매꾹 상품번호", placeholder="예: 44049099")
+        with col2:
+            상품명입력 = st.text_input("상품명", placeholder="예: 미키마우스 식판")
+
+        if st.button("모니터링 등록하기", type="primary"):
+            if 상품번호 and 상품명입력:
+                목록 = 재고목록불러오기()
+                이미등록 = any(s['상품번호'] == 상품번호 for s in 목록)
+                if 이미등록:
+                    st.warning("이미 등록된 상품이에요!")
+                else:
+                    목록.append({
+                        "상품번호": 상품번호,
+                        "상품명": 상품명입력,
+                        "등록일시": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "마지막체크": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "상태": "판매중",
+                        "링크": f"http://domeggook.com/{상품번호}"
+                    })
+                    재고목록저장(목록)
+                    send_telegram(f"📦 <b>재고 모니터링 등록!</b>\n상품명: {상품명입력}\n상품번호: {상품번호}")
+                    st.success(f"✅ '{상품명입력}' 모니터링 등록 완료!")
+
+    with 탭1:
+        st.subheader("📋 모니터링 중인 상품 목록")
+        목록 = 재고목록불러오기()
+
+        if not 목록:
+            st.info("등록된 상품이 없어요. 상품 등록 탭에서 추가해주세요!")
+        else:
+            if st.button("🔄 지금 바로 재고 체크", type="primary"):
+                with st.spinner("재고 체크 중..."):
+                    변동있음 = False
+                    for i, 상품 in enumerate(목록):
+                        item = 도매꾹상품조회(상품['상품번호'])
+                        이전상태 = 상품['상태']
+                        새상태 = "판매중" if item else "품절/삭제"
+                        목록[i]['상태'] = 새상태
+                        목록[i]['마지막체크'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+                        if 이전상태 != 새상태:
+                            변동있음 = True
+                            if 새상태 == "품절/삭제":
+                                send_telegram(f"🚨 <b>품절 알림!</b>\n상품명: {상품['상품명']}\n⚠️ 품절되었어요!\n🔗 {상품['링크']}")
+                                st.error(f"🚨 품절! {상품['상품명']}")
+                            else:
+                                send_telegram(f"✅ <b>재입고 알림!</b>\n상품명: {상품['상품명']}\n🎉 다시 판매 중이에요!")
+                                st.success(f"✅ 재입고! {상품['상품명']}")
+
+                    재고목록저장(목록)
+                    if not 변동있음:
+                        st.success("✅ 모든 상품 정상 판매 중!")
+
+            st.divider()
+            for i, s in enumerate(목록):
+                상태색 = "🟢" if s['상태'] == "판매중" else "🔴"
+                c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+                c1.write(f"**{상태색} {s['상품명']}**")
+                c2.write(f"{s['상태']}")
+                c3.write(f"체크: {s['마지막체크']}")
+                if c4.button("삭제", key=f"del_{i}"):
+                    목록.pop(i)
+                    재고목록저장(목록)
+                    st.rerun()
