@@ -50,12 +50,41 @@ def 필터링(items, 배송비=0):
     for item in items:
         가격 = int(item['lprice'])
         제목 = item['title'].replace('<b>', '').replace('</b>', '')
+        쇼핑몰 = item['mallName']
         if 가격 <= 100:
             continue
-        if any(k in 제목 or k in item['mallName'] for k in 해외키워드):
+        if any(k in 제목 or k in 쇼핑몰 for k in 해외키워드):
             제외목록.append(제목)
             continue
-        상품목록.append({"제목": 제목, "가격": 가격, "배송비": 배송비, "총가격": 가격 + 배송비, "쇼핑몰": item['mallName'], "링크": item['link'], "출처": "네이버"})
+
+        # 쇼핑몰별 아이콘
+        if 'G마켓' in 쇼핑몰 or 'Gmarket' in 쇼핑몰:
+            출처 = "G마켓"
+        elif '옥션' in 쇼핑몰 or 'Auction' in 쇼핑몰:
+            출처 = "옥션"
+        elif '쿠팡' in 쇼핑몰 or 'Coupang' in 쇼핑몰:
+            출처 = "쿠팡"
+        elif '11번가' in 쇼핑몰:
+            출처 = "11번가"
+        elif '스마트스토어' in 쇼핑몰 or '네이버' in 쇼핑몰:
+            출처 = "스마트스토어"
+        elif '위메프' in 쇼핑몰:
+            출처 = "위메프"
+        elif '티몬' in 쇼핑몰:
+            출처 = "티몬"
+        else:
+            출처 = 쇼핑몰
+
+        상품목록.append({
+            "제목": 제목,
+            "가격": 가격,
+            "배송비": 배송비,
+            "총가격": 가격 + 배송비,
+            "쇼핑몰": 쇼핑몰,
+            "출처": 출처,
+            "링크": item['link']
+        })
+
     가격목록 = [s['가격'] for s in 상품목록]
     if 가격목록:
         평균가 = sum(가격목록) // len(가격목록)
@@ -253,7 +282,10 @@ elif 메뉴 == "🔎 통합 최저가 검색":
                 c2.write(f"{s['가격']:,}원")
                 c3.write(f"총 {s['총가격']:,}원")
                 c4.link_button("구매", s['링크'])
-
+            출처아이콘 = {
+                "G마켓": "🟡", "옥션": "🟠", "쿠팡": "🟠",
+                "11번가": "🔴", "스마트스토어": "🟢", "도매꾹": "🔵"
+}
 elif 메뉴 == "📸 이미지로 검색":
     st.title("📸 이미지로 최저가 검색")
     st.caption("상품 이미지를 올리면 자동으로 최저가를 찾아드려요!")
