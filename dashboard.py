@@ -288,15 +288,16 @@ elif 메뉴 == "📸 이미지로 검색":
     st.caption("상품 이미지를 올리면 AI가 자동으로 상품명을 인식하고 최저가를 찾아드려요!")
 
     def claude_이미지분석(이미지바이트, 미디어타입="image/jpeg"):
+        """Claude API로 이미지 분석 → 상품명 추출"""
         try:
             b64 = base64.b64encode(이미지바이트).decode("utf-8")
             headers = {
-                "x-api-key": CLAUDE_API_KEY,
+                "x-api-key": CLAUDE_API_KEY,  # ✅ 다시 안전하게 secrets.toml에서 불러오도록 복구!
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json"
             }
             body = {
-                "model": "claude-3-5-sonnet-20241022",
+                "model": "claude-sonnet-4-6", # 🚀 2026년 최신 4.6 현역 모델로 교체!
                 "max_tokens": 300,
                 "messages": [{
                     "role": "user",
@@ -316,11 +317,16 @@ elif 메뉴 == "📸 이미지로 검색":
                     ]
                 }]
             }
-            resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=body, timeout=15)
+            resp = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=headers,
+                json=body,
+                timeout=60
+            )
             if resp.status_code == 200:
                 return resp.json()["content"][0]["text"].strip()
             else:
-                st.error(f"API 오류: {resp.status_code}")
+                st.error(f"API 오류: {resp.status_code} - {resp.text}") 
                 return None
         except Exception as e:
             st.error(f"요청 중 오류 발생: {e}")
@@ -1231,15 +1237,15 @@ elif 메뉴 == "🏪 상품 등록 도우미":
 
 전문적이고 고객의 지갑을 열게 만드는 매력적인 톤앤매너로 작성해주세요."""
                     headers = {
-                        "x-api-key": CLAUDE_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json"
-                    }
+                                    "x-api-key": CLAUDE_API_KEY,
+                                    "anthropic-version": "2023-06-01",
+                                    "content-type": "application/json"
+                                }
                     body = {
-                        "model": "claude-3-5-sonnet-20241022", 
-                        "max_tokens": 1500, 
-                        "messages": [{"role": "user", "content": 프롬프트}]
-                    }
+                                    "model": "claude-sonnet-4-6",
+                                    "max_tokens": 1500,
+                                    "messages": [{"role": "user", "content": 프롬프트}]
+                                }
                     resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=body, timeout=30)
                     if resp.status_code == 200:
                         ai결과 = resp.json()["content"][0]["text"]
