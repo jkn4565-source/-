@@ -139,30 +139,59 @@ def 검색_11번가(검색어, 개수=20):
         "key": ELEVENST_API_KEY, "apiCode": "ProductSearch",
         "keyword": 검색어, "pageSize": 개수, "pageNum": 1, "sortCd": "20",
     }
+    
+    # 🚫 1. 강력한 차단 키워드 (띄어쓰기 무시)
+    해외키워드 = ['해외', '직구', '구매대행', '중국', 'usa', 'global', '배송대행', '항공', '통관', '세관', '수입']
+    
     try:
         response = requests.get(url, params=params)
         content = response.content.decode('euc-kr', errors='ignore')
         root = ET.fromstring(content)
         상품목록 = []
+        
         for item in root.findall('.//Product'):
-            제목 = item.findtext('ProductName', '')
-            가격 = item.findtext('SalePrice', '0') or item.findtext('Price', '0')
-            배송비텍스트 = item.findtext('DeliveryFee', '0')
+            제목 = item.findtext('ProductName', '').replace('<b>', '').replace('</b>', '')
+            가격_raw = item.findtext('SalePrice', '0') or item.findtext('Price', '0')
+            배송비_raw = item.findtext('DeliveryFee', '0')
             링크 = item.findtext('DetailPageUrl', '')
+            해외여부 = item.findtext('GlobalItmYn', 'N')
+            판매자 = item.findtext('SellerNick', '').lower()
+
             try:
-                가격 = int(str(가격).replace(',', '').strip())
-                배송비 = int(str(배송비텍스트).replace(',', '').strip()) if 배송비텍스트 else 0
+                가격 = int(가격_raw.replace(',', '').strip())
+                배송비 = int(배송비_raw.replace(',', '').strip()) if 배송비_raw else 0
             except:
                 continue
-            if 가격 <= 0:
+
+            # 🚨 [필터 1] 배송비 6,000원 이상은 무조건 아웃!
+            # 국내 위탁 배송비는 보통 3,000원~4,000원 사이입니다. 6,000원이 넘으면 99% 해외 배송입니다.
+            if 배송비 >= 6000:
                 continue
+
+            # 🚨 [필터 2] 제목 키워드 검사 (공백 제거 후 검사)
+            clean_title = 제목.replace(' ', '').lower()
+            if any(k in clean_title for k in 해외키워드):
+                continue
+
+            # 🚨 [필터 3] 해외 셀러 특유의 영문 아이디 패턴 차단
+            # 아이디가 7자 이상이고 영문+숫자 조합인데 한글이 하나도 없으면 차단
+            clean_seller = 판매자.replace(' ', '')
+            if len(clean_seller) >= 8 and clean_seller.isalnum():
+                if not any(ord('가') <= ord(c) <= ord('힣') for c in clean_seller):
+                    continue
+
+            # 🚨 [필터 4] 11번가 공식 해외 태그
+            if 해외여부 == 'Y':
+                continue
+
             상품목록.append({
                 "제목": 제목, "가격": 가격, "배송비": 배송비,
                 "총가격": 가격 + 배송비, "쇼핑몰": "11번가",
                 "링크": 링크, "출처": "11번가"
             })
+            
         return sorted(상품목록, key=lambda x: x['총가격'])
-    except:
+    except Exception as e:
         return []
 
 def send_telegram(text):
