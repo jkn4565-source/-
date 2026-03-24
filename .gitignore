@@ -1,0 +1,14 @@
+.streamlit/secrets.toml
+장부.json
+재고모니터링.json
+블루오션키워드.json
+__pycache__/
+# 보안 파일 (절대 깃허브에 안 올라가게 막음)
+.streamlit/secrets.toml
+.streamlit/
+
+# 데이터베이스 장부 파일들 (옵션: 초기화 방지)
+*.json
+
+# 기타 파이썬 캐시 파일
+__pycache__/
