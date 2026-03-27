@@ -144,7 +144,7 @@ if 'keywords_list' not in st.session_state: st.session_state['keywords_list'] = 
 if 'run_search' not in st.session_state: st.session_state['run_search'] = False
 
 # ==========================================
-# 🛠️ 4. 핵심 API 함수 (PNG 버그 수정 반영)
+# 🛠️ 4. 핵심 API 함수 (PNG 버그 수정 및 도매꾹 market 파라미터 추가)
 # ==========================================
 
 def call_claude_api(body):
@@ -190,7 +190,8 @@ def 필터링(items, 배송비=0):
 
 def 도매꾹검색(검색어, 개수=20):
     url = "https://domeggook.com/ssl/api/"
-    params = {"ver": "4.1", "mode": "getItemList", "aid": DOMEGGOOK_API_KEY, "om": "json", "kw": 검색어, "sz": 개수}
+    # 🚨 여기에 "market": "dome" 핵심 코드를 추가했습니다!
+    params = {"ver": "4.1", "mode": "getItemList", "aid": DOMEGGOOK_API_KEY, "market": "dome", "om": "json", "kw": 검색어, "sz": 개수}
     try:
         data = requests.get(url, params=params).json()
         items = data['domeggook']['list']['item']
@@ -421,7 +422,6 @@ elif 메뉴 == "🏪 상품 등록 도우미":
             st.divider()
             st.text_area("📋 복사하기 (Ctrl+A로 전체 선택)", value=st.session_state['helper_generated_text'], height=300, key="txt_area_desc")
 
-# (이하 마진 계산기, 재고 알림, 블루오션 탐지 메뉴도 st.markdown(h1) 및 container 디자인 적용하여 v5.5와 동일하게 작성)
 elif 메뉴 == "💰 마진 계산기":
     st.markdown("<h1>💰 스마트 마진 계산기</h1>", unsafe_allow_html=True)
     with st.container():
@@ -458,7 +458,8 @@ elif 메뉴 == "📦 재고/가격 알림":
             n_no = c1.text_input("도매꾹 상품번호 입력", key="n_no")
             n_name = c2.text_input("관리 이름 입력", key="n_name")
             if st.button("👑 모니터링 명단에 등록", use_container_width=True):
-                p = {"ver": "4.1", "aid": DOMEGGOOK_API_KEY, "om": "json", "mode": "getItemList", "itemNo": n_no}
+                # 🚨 여기도 market=dome 추가 완료!
+                p = {"ver": "4.1", "aid": DOMEGGOOK_API_KEY, "market": "dome", "om": "json", "mode": "getItemList", "itemNo": n_no}
                 item_data = requests.get("https://domeggook.com/ssl/api/", params=p).json()
                 if 'domeggook' in item_data and 'list' in item_data['domeggook'] and 'item' in item_data['domeggook']['list']:
                     item_res = item_data['domeggook']['list']['item']
@@ -474,7 +475,8 @@ elif 메뉴 == "📦 재고/가격 알림":
         if st.button("🔄 전수 점검 및 텔레그램 가격체크 시작", type="primary", use_container_width=True):
             with st.spinner("공급처 데이터 전수 확인 중..."):
                 for i, s in enumerate(목록):
-                    p = {"ver": "4.1", "aid": DOMEGGOOK_API_KEY, "om": "json", "mode": "getItemList", "itemNo": s['no']}
+                    # 🚨 여기도 market=dome 추가 완료!
+                    p = {"ver": "4.1", "aid": DOMEGGOOK_API_KEY, "market": "dome", "om": "json", "mode": "getItemList", "itemNo": s['no']}
                     res_data = requests.get("https://domeggook.com/ssl/api/", params=p).json()
                     if 'domeggook' in res_data and 'list' in res_data['domeggook'] and 'item' in res_data['domeggook']['list']:
                         res = res_data['domeggook']['list']['item']
@@ -485,10 +487,10 @@ elif 메뉴 == "📦 재고/가격 알림":
                                 send_telegram(f"🔺 <b>가격인상!</b>\n{s['name']}\n{s['price']:,}원 ➔ <b>{now_p:,}원</b>")
                             목록[i]['price'] = now_p
                             목록[i]['상태'] = "판매중"
-                        else:
-                            if s['상태'] == "판매중":
-                                send_telegram(f"🚫 <b>품절!</b>\n{s['name']} 품절발생")
-                                목록[i]['상태'] = "품절"
+                    else:
+                        if s['상태'] == "판매중":
+                            send_telegram(f"🚫 <b>품절!</b>\n{s['name']} 품절발생")
+                            목록[i]['상태'] = "품절"
                 저장(목록)
                 st.success("전수 점검 완료!")
                 st.rerun()
@@ -530,4 +532,4 @@ elif 메뉴 == "💎 블루오션 탐지":
                     elif total < 10000:
                         st.info("🟢 경쟁해볼 만한 시장입니다. 상세페이지 차별화가 필요합니다.")
                     else:
-                        st.error("🔴 경쟁이 매우 치열한 레드오션입니다. 다른 키워드를 추천합니다.")
+                        st.error("🔴경쟁이 매우 치열한 레드오션입니다. 다른 키워드를 추천합니다.")
