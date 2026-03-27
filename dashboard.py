@@ -323,57 +323,58 @@ if 메뉴 == "🏠 홈":
 # --- [Menu 2] 이미지로 검색 (디자인 컨셉 유지) ---
 elif 메뉴 == "📸 이미지로 검색":
     st.markdown("<h1>📸 AI 이미지 최저가 검색</h1>", unsafe_allow_html=True)
+    
+    # 🚨 [안전장치] 라이브러리가 아직 설치 중일 때를 대비
+    try:
+        from streamlit_paste_button import paste_button
+        has_paste_lib = True
+    except ImportError:
+        has_paste_lib = False
+
     with st.container():
-        # 💡 팁: 이 칸을 마우스로 한 번 클릭하고 Ctrl+V를 누르면 캡처 화면이 바로 올라옵니다!
-        up_file = st.file_uploader("상품 사진 업로드 (또는 클릭 후 Ctrl+V)", type=['jpg', 'jpeg', 'png'], key="img_search_up")
+        if has_paste_lib:
+            st.write("### 1. 캡처해서 바로 넣기")
+            paste_result = paste_button("👑 여기에 캡처 이미지 붙여넣기 (클릭!)", key="king_paste")
+            st.write("--- or ---")
         
-        if up_file:
-            # --- 🚨 이미지 다이어트 및 분석 준비 ---
-            img_bytes = up_file.getvalue()
-            pil_image = Image.open(io.BytesIO(img_bytes))
-            
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-            
-            # 8000픽셀 에러 방지용 축소
+        up_file = st.file_uploader("방법 2: 파일 업로드 (또는 이 칸 클릭 후 Ctrl+V)", type=['jpg', 'jpeg', 'png'], key="img_search_up")
+
+        # 데이터 가져오기 (캡처 또는 파일)
+        pil_image = None
+        if has_paste_lib and paste_result.image_data is not None:
+            pil_image = paste_result.image_data
+        elif up_file:
+            pil_image = Image.open(up_file)
+
+        if pil_image:
+            # --- 이미지 최적화 (다이어트) ---
+            if pil_image.mode != 'RGB': pil_image = pil_image.convert('RGB')
             pil_image.thumbnail((1500, 1500))
             
             buffered = io.BytesIO()
             pil_image.save(buffered, format="JPEG")
-            final_img_bytes = buffered.getvalue()
-            b64 = base64.b64encode(final_img_bytes).decode("utf-8")
-            
+            img_bytes = buffered.getvalue()
+            b64 = base64.b64encode(img_bytes).decode("utf-8")
+
             col_u1, col_u2 = st.columns([1, 2])
             with col_u1:
-                st.image(final_img_bytes, width=300, caption="업로드된 이미지")
+                st.image(img_bytes, width=300)
             
             with col_u2:
-                st.markdown("### 1단계: AI 정밀 분석")
-                if st.button("🔍 AI 황금 키워드 5개 추출", key="btn_ai_kw"):
-                    with st.spinner("이미지 속 성공 DNA 분석 중..."):
+                if st.button("🔍 AI 황금 키워드 5개 추출"):
+                    with st.spinner("이미지 분석 중..."):
                         body = {
-                            "model": "claude-sonnet-4-6", # 대표님 열쇠에 맞는 모델명
+                            "model": "claude-sonnet-4-6",
                             "max_tokens": 300,
                             "messages": [{"role": "user", "content": [
                                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
-                                {"type": "text", "text": "당신은 한국의 10년차 탑티어 상품 소싱 MD입니다. 이 사진 속 물건이 정확히 무엇인지 분석하고, 도매꾹/네이버 검색에 적합한 명사 형태 키워드 5개를 콤마(,)로만 답변하세요."}
+                                {"type": "text", "text": "한국 쇼핑몰 검색용 명사 키워드 5개를 콤마로만 답변하세요."}
                             ]}]
                         }
                         res = call_claude_api(body)
                         if res:
                             st.session_state['keywords_list'] = [k.strip() for k in res.split(',')]
                             st.rerun()
-
-    if st.session_state['keywords_list']:
-        st.markdown("### 2단계: 사냥할 키워드 선택")
-        st.write("▼ 키워드를 선택하면 통합 최저가 검색이 시작됩니다.")
-        cols = st.columns(len(st.session_state['keywords_list']))
-        for i, kw in enumerate(st.session_state['keywords_list']):
-            if cols[i].button(f"💎 {kw}", key=f"kw_{i}"):
-                st.session_state['keyword_input'] = kw
-                st.session_state['run_search'] = True
-                st.rerun()
-
     st.divider()
     with st.container():
         st.markdown("### 3단계: 통합 검색어")
