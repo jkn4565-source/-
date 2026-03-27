@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 import base64
 import os
 from datetime import datetime
-from Pillow import Image
+from PIL import Image
 import io
 from streamlit_paste_button import paste_button # 👈 추가! (캡처 이미지 처리용)
 # ==========================================
