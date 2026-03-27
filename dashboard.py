@@ -154,7 +154,7 @@ def call_claude_api(body):
             "anthropic-version": "2023-06-01",
             "content-type": "application/json"
         }
-        body["model"] = "claude-3-sonnet-20240229"
+        body["model"] = "claude-3-haiku-20240307"
         resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=body, timeout=80)
         
         if resp.status_code == 200:
