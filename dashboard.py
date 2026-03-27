@@ -154,7 +154,7 @@ def call_claude_api(body):
             "anthropic-version": "2023-06-01",
             "content-type": "application/json"
         }
-        body["model"] = "claude-sonnet-4-6" 
+        body["model"] = "claude-3-5-sonnet-20240620"
         resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=body, timeout=80)
         
         if resp.status_code == 200:
@@ -340,7 +340,7 @@ elif 메뉴 == "📸 이미지로 검색":
                             "max_tokens": 300,
                             "messages": [{"role": "user", "content": [
                                 {"type": "image", "source": {"type": "base64", "media_type": img_type, "data": b64}}, # 🚀 동적 형식 적용!
-                                {"type": "text", "text": "한국 쇼핑몰 검색용 핵심 키워드 5개를 콤마로만 답변하세요."}
+                                {"type": "text", "text": "당신은 한국의 10년차 탑티어 상품 소싱 MD입니다. 이 사진 속 물건이 정확히 무엇인지(재질, 용도, 특징) 분석하세요. 그리고 네이버 쇼핑이나 도매꾹에서 이 상품을 찾을 때 소비자들이 검색창에 입력할 가장 정확하고 구체적인 '명사 형태'의 상품명 키워드 딱 5개만 콤마(,)로 구분해서 출력하세요. (예: 무선 탁상선풍기, 넥밴드 선풍기 등). 절대 다른 설명이나 인사말은 하지 마세요."}
                             ]}]
                         }
                         res = call_claude_api(body)
