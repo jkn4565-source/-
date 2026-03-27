@@ -8,7 +8,7 @@ import os
 from datetime import datetime
 from PIL import Image
 import io
-from streamlit_paste_button import paste_button # 👈 추가! (캡처 이미지 처리용)
+
 # ==========================================
 # 🔐 1. 안전한 API 키 로드 (동일)
 # ==========================================
@@ -324,69 +324,39 @@ if 메뉴 == "🏠 홈":
 elif 메뉴 == "📸 이미지로 검색":
     st.markdown("<h1>📸 AI 이미지 최저가 검색</h1>", unsafe_allow_html=True)
     with st.container():
-        # st.markdown("### 📸 사진 입력 (두 가지 방법 중 선택)") # 제목은 디자인에 맞게 조절
-        
-        col_in1, col_in2 = st.columns(2)
-        
-        with col_in1:
-            # 방법 1: 기존 파일 업로드
-            up_file = st.file_uploader("방법 1: 파일 업로드", type=['jpg', 'jpeg', 'png'], key="img_search_up")
-            
-        with col_in2:
-            # 방법 2: 캡처 이미지 붙여넣기 (Ctrl+V) 👈 NEW!
-            st.write("방법 2: 캡처 후 아래 버튼 클릭")
-            paste_result = paste_button("📋 클립보드 이미지 붙여넣기", key="paste_img")
-
-        # 두 가지 방법 중 하나라도 입력이 들어오면 처리
-        pil_image = None
-        input_method = None
+        # 💡 팁: 이 칸을 마우스로 한 번 클릭하고 Ctrl+V를 누르면 캡처 화면이 바로 올라옵니다!
+        up_file = st.file_uploader("상품 사진 업로드 (또는 클릭 후 Ctrl+V)", type=['jpg', 'jpeg', 'png'], key="img_search_up")
         
         if up_file:
-            pil_image = Image.open(up_file)
-            input_method = "파일 업로드"
-        elif paste_result.image_data is not None:
-            # paste_button은 이미 PIL 이미지 객체를 뱉어냅니다.
-            pil_image = paste_result.image_data
-            input_method = "캡처 붙여넣기"
-
-        # 이미지가 있다면 분석 시작
-        if pil_image:
-            # --- 🚨 [필수] 이미지 다이어트 (아까 추가한 크기 축소 코드 포함) ---
+            # --- 🚨 이미지 다이어트 및 분석 준비 ---
+            img_bytes = up_file.getvalue()
+            pil_image = Image.open(io.BytesIO(img_bytes))
+            
             if pil_image.mode != 'RGB':
                 pil_image = pil_image.convert('RGB')
-            pil_image.thumbnail((1500, 1500)) # 8000픽셀 에러 방지
-
-            # 데이터 변환 (b64)
+            
+            # 8000픽셀 에러 방지용 축소
+            pil_image.thumbnail((1500, 1500))
+            
             buffered = io.BytesIO()
             pil_image.save(buffered, format="JPEG")
-            img_bytes = buffered.getvalue()
-            b64 = base64.b64encode(img_bytes).decode("utf-8")
-            img_type = "image/jpeg"
+            final_img_bytes = buffered.getvalue()
+            b64 = base64.b64encode(final_img_bytes).decode("utf-8")
             
-            # --- 화면 출력 및 분석 버튼 ---
             col_u1, col_u2 = st.columns([1, 2])
             with col_u1:
-                st.image(img_bytes, width=300, caption=f"입력 방식: {input_method}") # 축소된 이미지 출력
-            
-            # ... (이하 '1단계: AI 정밀 분석' 및 '🔍 AI 황금 키워드 5개 추출' 버튼 코드는 동일하게 유지) ...
-        
-        if up_file:
-            img_type = up_file.type # 🚀 [버그 수정 반영] PNG/JPG 자동 인식
-            img_bytes = up_file.getvalue()
-            col_u1, col_u2 = st.columns([1, 2])
-            with col_u1:
-                st.image(img_bytes, width=300)
+                st.image(final_img_bytes, width=300, caption="업로드된 이미지")
             
             with col_u2:
                 st.markdown("### 1단계: AI 정밀 분석")
                 if st.button("🔍 AI 황금 키워드 5개 추출", key="btn_ai_kw"):
                     with st.spinner("이미지 속 성공 DNA 분석 중..."):
-                        b64 = base64.b64encode(img_bytes).decode("utf-8")
                         body = {
+                            "model": "claude-sonnet-4-6", # 대표님 열쇠에 맞는 모델명
                             "max_tokens": 300,
                             "messages": [{"role": "user", "content": [
-                                {"type": "image", "source": {"type": "base64", "media_type": img_type, "data": b64}}, # 🚀 동적 형식 적용!
-                                {"type": "text", "text": "당신은 한국의 10년차 탑티어 상품 소싱 MD입니다. 이 사진 속 물건이 정확히 무엇인지(재질, 용도, 특징) 분석하세요. 그리고 네이버 쇼핑이나 도매꾹에서 이 상품을 찾을 때 소비자들이 검색창에 입력할 가장 정확하고 구체적인 '명사 형태'의 상품명 키워드 딱 5개만 콤마(,)로 구분해서 출력하세요. (예: 무선 탁상선풍기, 넥밴드 선풍기 등). 절대 다른 설명이나 인사말은 하지 마세요."}
+                                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
+                                {"type": "text", "text": "당신은 한국의 10년차 탑티어 상품 소싱 MD입니다. 이 사진 속 물건이 정확히 무엇인지 분석하고, 도매꾹/네이버 검색에 적합한 명사 형태 키워드 5개를 콤마(,)로만 답변하세요."}
                             ]}]
                         }
                         res = call_claude_api(body)
