@@ -226,10 +226,9 @@ def send_telegram(text):
 st.sidebar.markdown("# 👑 위탁의왕 Ultra")
 st.sidebar.markdown("---")
 메뉴 = st.sidebar.radio("메뉴 선택", [
-    "🏠 홈", "📸 이미지로 검색", "🔎 통합 최저가 검색", "🏪 상품 등록 도우미", 
-    "💰 마진 계산기", "📦 재고/가격 알림", "💎 블루오션 탐지"
+    "🏠 홈", "📸 이미지로 검색", "🔎 통합 최저가 검색", "🏪 상품 등록 도우미",
+    "💰 마진 계산기", "📦 재고/가격 알림", "💎 블루오션 탐지 + 🤖 자동추천"
 ], index=0)
-
 # --- [Menu 1] 홈 ---
 if 메뉴 == "🏠 홈":
     st.markdown("<h1>👑 위탁의왕 자동화 대시보드 v6.0 Ultra</h1>", unsafe_allow_html=True)
@@ -486,25 +485,214 @@ elif 메뉴 == "📦 재고/가격 알림":
                     저장(목록)
                     st.rerun()
 
-elif 메뉴 == "💎 블루오션 탐지":
-    st.markdown("<h1>💎 블루오션 키워드 탐지기</h1>", unsafe_allow_html=True)
-    with st.container():
+elif 메뉴 == "💎 블루오션 탐지 + 🤖 자동추천":
+    st.markdown("<h1>💎 블루오션 탐지 + 🤖 AI 자동 일일추천</h1>", unsafe_allow_html=True)
+
+    탭1, 탭2 = st.tabs(["🔍 단일 키워드 분석", "🚀 AI 자동 일일추천 (하루 10개 사냥)"])
+
+    # ── TAB 1: 기존 단일 키워드 분석 유지 ──────────────────────────
+    with 탭1:
         st.caption("키워드를 입력하면 네이버 전체 등록 상품수를 분석하여 경쟁 강도를 알려드립니다.")
         col_b1, col_b2 = st.columns([3, 1])
         kw = col_b1.text_input("분석할 사냥감(키워드) 입력", key="input_blue_kw")
         btn_ana = col_b2.button("실시간 시장 분석", type="primary", key="btn_blue_ana")
-        
-        if btn_ana:
-            if kw:
-                with st.spinner("네이버 시장 데이터 분석 중..."):
-                    res = 네이버검색(kw)
-                    total = res.get('total', 0)
-                    st.metric("네이버 등록 상품수", f"{total:,}개")
+        if btn_ana and kw:
+            with st.spinner("네이버 시장 데이터 분석 중..."):
+                res = 네이버검색(kw)
+                total = res.get('total', 0)
+            st.metric("네이버 등록 상품수", f"{total:,}개")
+            st.divider()
+            if total < 2000:
+                st.success("🏆 확실한 블루오션입니다! 지금 바로 소싱하세요.")
+                st.balloons()
+            elif total < 10000:
+                st.info("🟢 경쟁해볼 만한 시장입니다. 상세페이지 차별화가 필요합니다.")
+            else:
+                st.error("🔴 경쟁이 매우 치열한 레드오션입니다. 다른 키워드를 추천합니다.")
+
+    # ── TAB 2: AI 자동 일일추천 ─────────────────────────────────────
+    with 탭2:
+        st.caption("AI 트렌드 분석 → 블루오션 스캔 → 최저가 소싱 → 이미지 기반 상세페이지 자동 생성")
+
+        # 설정 패널
+        col_s1, col_s2, col_s3 = st.columns(3)
+        카테고리 = col_s1.selectbox("타겟 카테고리", [
+            "자동 탐지 (AI 추천)", "생활용품", "주방용품", "뷰티/헬스",
+            "반려동물", "스포츠/레저", "디지털/가전", "패션잡화", "유아동"
+        ], key="sel_category")
+        타겟가격대 = col_s2.selectbox("타겟 판매가대", [
+            "전체", "1만원 이하", "1~3만원", "3~5만원", "5만원 이상"
+        ], key="sel_price_range")
+        추천수 = col_s3.number_input("추천 상품 수", min_value=3, max_value=10, value=5, key="num_recommend")
+        send_tg = st.checkbox("📲 완료 후 텔레그램 발송", value=True, key="chk_telegram")
+        st.divider()
+
+        # ── 함수 정의 ──────────────────────────────────────────────
+
+        def ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수):
+            prompt = f"""당신은 한국 스마트스토어/쿠팡 위탁판매 전문 MD입니다.
+아래 조건에 맞게 '하루 10개 이상' 팔릴 가능성이 높은 상품 키워드를 추천해주세요.
+
+[조건]
+- 카테고리: {카테고리}
+- 가격대: {타겟가격대}
+- 추천 개수: {추천수}개
+- 기준: 계절성/트렌드 반영, 검색량 대비 경쟁 적은 블루오션 위주
+- 레드오션(무선이어폰, 텀블러 등) 제외
+
+[출력] 반드시 JSON 배열만. 설명 없음.
+[
+  {{"keyword":"키워드","reason":"추천이유 한 줄","price_range":"소싱가~판매가"}},
+  ...
+]"""
+            body = {"max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]}
+            res = call_claude_api(body)
+            if res:
+                try:
+                    return json.loads(res.replace("```json","").replace("```","").strip())
+                except:
+                    st.error("AI 응답 파싱 실패. 다시 시도해주세요.")
+            return []
+
+        def 경쟁강도_필터(키워드목록):
+            결과 = []
+            bar = st.progress(0, text="네이버 경쟁강도 분석 중...")
+            for i, item in enumerate(키워드목록):
+                res = 네이버검색(item['keyword'], 개수=10)
+                total = res.get('total', 999999)
+                item['total_count'] = total
+                if total < 15000:   item['ocean'], item['score'] = "🟢 블루오션", "상"
+                elif total < 50000: item['ocean'], item['score'] = "🟡 중간", "중"
+                else:               item['ocean'], item['score'] = "🔴 레드오션", "하"
+                결과.append(item)
+                bar.progress((i+1)/len(키워드목록), text=f"분석 중: {item['keyword']} ({total:,}개)")
+            bar.empty()
+            return sorted(결과, key=lambda x: x['total_count'])
+
+        def 소싱데이터_조회(keyword):
+            n = 필터링(네이버검색(keyword, 개수=10).get('items', []))
+            d = 도매꾹검색(keyword, 개수=5)
+            combined = sorted(n[:5] + d[:5], key=lambda x: x['총가격'])
+            return combined[0] if combined else None
+
+        def ai_상세페이지_생성(keyword, 소싱, 추천이유):
+            price_info = f"소싱가 {소싱['총가격']:,}원 ({소싱['출처']})" if 소싱 else "소싱가 미확인"
+            img_url = 소싱.get('이미지', '') if 소싱 else ''
+
+            # 이미지 URL → base64 변환
+            img_content = []
+            if img_url:
+                try:
+                    r = requests.get(img_url, timeout=10)
+                    if r.status_code == 200:
+                        ct = r.headers.get('Content-Type', 'image/jpeg')
+                        mt = 'image/png' if 'png' in ct else 'image/gif' if 'gif' in ct else 'image/webp' if 'webp' in ct else 'image/jpeg'
+                        b64 = base64.b64encode(r.content).decode('utf-8')
+                        img_content = [{"type":"image","source":{"type":"base64","media_type":mt,"data":b64}}]
+                except:
+                    pass
+
+            prompt = f"""당신은 매출을 10배 올려주는 이커머스 카피라이터입니다.
+{'첨부 이미지를 분석하고' if img_content else '아래 정보를 바탕으로'} 스마트스토어 상세페이지 기획안을 작성하세요.
+
+[상품 정보]
+- 키워드: {keyword}
+- {price_info}
+- 추천 이유: {추천이유}
+
+### 🏷️ 상품 타이틀 후보 3가지
+(클릭률 높이는 제목, 각 30자 이내)
+
+### 💡 핵심 셀링포인트 3가지
+(고객 구매 심리 자극, 한 줄씩)
+
+### 📝 상단 후킹 문구
+(3~5줄, 감성적 공감 유발)
+
+### ✅ 상품 특징 5가지
+(구체적 스펙/장점 불릿)
+
+### 🎯 추천 검색 키워드 10개
+(콤마 구분, 롱테일 포함)
+
+### 💰 가격 전략
+(플랫폼별 추천 판매가 & 예상 마진)"""
+
+            body = {"max_tokens": 2000, "messages": [{"role":"user","content": img_content + [{"type":"text","text":prompt}]}]}
+            return call_claude_api(body)
+
+        # ── 실행 버튼 ──────────────────────────────────────────────
+        if st.button("🚀 AI 자동 분석 시작 — 오늘의 황금 상품 사냥", type="primary", use_container_width=True, key="btn_auto_daily"):
+
+            결과_목록 = []
+
+            # STEP 1
+            st.markdown("### 🧠 STEP 1 — AI 트렌드 분석")
+            with st.spinner("Claude AI가 블루오션 키워드 분석 중..."):
+                키워드목록 = ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수)
+            if not 키워드목록:
+                st.error("키워드 생성 실패. 다시 시도해주세요.")
+                st.stop()
+            st.success(f"✅ {len(키워드목록)}개 키워드 생성 완료!")
+
+            # STEP 2
+            st.markdown("### 📊 STEP 2 — 네이버 경쟁강도 분석")
+            키워드목록 = 경쟁강도_필터(키워드목록)
+
+            # STEP 3+4
+            st.markdown("### 💎 STEP 3 — 소싱 & 상세페이지 자동 생성")
+            tg_msg = f"👑 <b>오늘의 위탁왕 자동추천</b> ({datetime.now().strftime('%Y-%m-%d')})\n\n"
+
+            for idx, item in enumerate(키워드목록):
+                kw_item = item['keyword']
+                icon = '🟢' if item['score']=='상' else '🟡' if item['score']=='중' else '🔴'
+
+                with st.expander(f"{icon} #{idx+1} [{item['ocean']}] **{kw_item}** — 경쟁상품 {item['total_count']:,}개", expanded=(idx==0)):
+
+                    col_a, col_b = st.columns([2, 1])
+                    with col_a:
+                        st.markdown(f"**추천 이유:** {item['reason']}")
+                        st.markdown(f"**예상 가격대:** {item['price_range']}")
+                        st.markdown(f"**경쟁 강도:** {item['ocean']} ({item['total_count']:,}개)")
+                    with col_b:
+                        with st.spinner("최저가 소싱 확인 중..."):
+                            소싱 = 소싱데이터_조회(kw_item)
+                        if 소싱:
+                            st.metric("최저 소싱가", f"{소싱['총가격']:,}원")
+                            st.caption(f"출처: {소싱['출처']}")
+                            if 소싱.get('이미지'):
+                                st.image(소싱['이미지'], width=120, caption="소싱 이미지")
+                            st.link_button("소싱처 바로가기 →", 소싱['링크'])
+                        else:
+                            st.warning("소싱 데이터 없음")
+
                     st.divider()
-                    if total < 2000:
-                        st.success("🏆 확실한 블루오션입니다! 지금 바로 소싱하세요.")
-                        st.balloons()
-                    elif total < 10000:
-                        st.info("🟢 경쟁해볼 만한 시장입니다. 상세페이지 차별화가 필요합니다.")
-                    else:
-                        st.error("🔴경쟁이 매우 치열한 레드오션입니다. 다른 키워드를 추천합니다.")
+                    with st.spinner(f"'{kw_item}' 상세페이지 생성 중..."):
+                        상세 = ai_상세페이지_생성(kw_item, 소싱, item['reason'])
+
+                    if 상세:
+                        st.markdown("#### 📄 AI 자동 생성 상세페이지 기획안")
+                        st.markdown(상세)
+                        st.text_area("📋 복사하기 (Ctrl+A → Ctrl+C)", value=상세, height=180, key=f"copy_{idx}")
+                        결과_목록.append({"keyword": kw_item, "ocean": item['ocean'], "count": item['total_count'],
+                                        "소싱가": 소싱['총가격'] if 소싱 else 0, "출처": 소싱['출처'] if 소싱 else "-"})
+                        소싱가_txt = f"{소싱['총가격']:,}원 ({소싱['출처']})" if 소싱 else "미확인"
+                        tg_msg += f"{idx+1}. <b>{kw_item}</b> {item['ocean']}\n   경쟁: {item['total_count']:,}개 | 소싱가: {소싱가_txt}\n\n"
+
+            # 텔레그램 발송
+            if send_tg and 결과_목록:
+                tg_msg += f"총 <b>{len(결과_목록)}개</b> 분석 완료 ✅"
+                send_telegram(tg_msg)
+                st.success("📲 텔레그램으로 결과 발송 완료!")
+
+            # 요약 테이블
+            if 결과_목록:
+                st.divider()
+                st.markdown("### 🏆 오늘의 추천 상품 최종 요약")
+                df = pd.DataFrame([{
+                    "순위": i+1, "상품키워드": r['keyword'], "경쟁강도": r['ocean'],
+                    "네이버경쟁수": f"{r['count']:,}개",
+                    "최저소싱가": f"{r['소싱가']:,}원" if r['소싱가'] else "미확인",
+                    "소싱출처": r['출처']
+                } for i, r in enumerate(결과_목록)])
+                st.dataframe(df, use_container_width=True, hide_index=True)
