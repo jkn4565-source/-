@@ -8,9 +8,11 @@ import os
 from datetime import datetime
 from PIL import Image
 import io
+# 👑 전용 캡처 버튼 라이브러리 추가!
+from streamlit_paste_button import paste_image_button 
 
 # ==========================================
-# 🔐 1. 안전한 API 키 로드 (동일)
+# 🔐 1. 안전한 API 키 로드
 # ==========================================
 try:
     NAVER_CLIENT_ID = st.secrets["NAVER_CLIENT_ID"]
@@ -25,120 +27,64 @@ except KeyError as e:
     st.stop()
 
 # ==========================================
-# 🎨 2. Ultra 고급 디자인 및 CSS 주입 (핵심 업데이트)
+# 🎨 2. Ultra 고급 디자인 및 CSS 주입
 # ==========================================
 st.set_page_config(page_title="위탁의왕 Ultra", page_icon="👑", layout="wide")
 
-# 움직이는 배경화면 및 고급 스타일 CSS
 st.markdown("""
 <style>
-    /* 🌌 [요청 반영] 역동적인 그라데이션 움직이는 배경 */
     @keyframes gradientBG {
         0% { background-position: 0% 50%; }
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
     }
-
     .stApp {
         background: linear-gradient(-45deg, #0a0f1e, #1a2a4a, #0d1b33, #050a14);
         background-size: 400% 400%;
         animation: gradientBG 15s ease infinite;
         color: #e0e6ed;
     }
-
-    /* 🌿 사이드바 고품격 다크 그린 스타일 */
     [data-testid="stSidebar"] {
         background-color: rgba(3, 45, 25, 0.9) !important;
         backdrop-filter: blur(10px);
         border-right: 1px solid rgba(255, 215, 0, 0.2);
     }
     [data-testid="stSidebar"] * { color: #f0f0f0 !important; font-weight: 500; }
-    
-    /* 🎯 사이드바 메뉴 스타일 업그레이드 */
-    .st-emotion-cache-1wv845u { /* 라디오 버튼 컨테이너 */
-        gap: 10px;
-    }
+    .st-emotion-cache-1wv845u { gap: 10px; }
     .st-emotion-cache-1wv845u [data-testid="stMarkdownContainer"] p {
-        background: rgba(255, 255, 255, 0.05);
-        padding: 10px 15px;
-        border-radius: 8px;
-        transition: all 0.3s;
-        border: 1px solid transparent;
+        background: rgba(255, 255, 255, 0.05); padding: 10px 15px; border-radius: 8px; transition: all 0.3s; border: 1px solid transparent;
     }
     .st-emotion-cache-1wv845u [data-testid="stMarkdownContainer"] p:hover {
-        background: rgba(3, 199, 90, 0.2);
-        border: 1px solid rgba(3, 199, 90, 0.5);
-        transform: translateX(5px);
+        background: rgba(3, 199, 90, 0.2); border: 1px solid rgba(3, 199, 90, 0.5); transform: translateX(5px);
     }
-
-    /* 💳 메인 콘텐츠 카드 디자인 (고급스러운 유리 효과) */
     .stBlock {
-        background-color: rgba(255, 255, 255, 0.03) !important;
-        border-radius: 15px !important;
-        padding: 20px !important;
-        border: 1px solid rgba(255, 215, 0, 0.1) !important;
-        backdrop-filter: blur(5px);
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+        background-color: rgba(255, 255, 255, 0.03) !important; border-radius: 15px !important; padding: 20px !important;
+        border: 1px solid rgba(255, 215, 0, 0.1) !important; backdrop-filter: blur(5px); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
     }
-
-    /* 🟢 메인 버튼 스타일 (네이버 그린 + 황금빛 호버) */
     .stButton > button {
-        width: 100%;
-        border-radius: 8px;
-        font-weight: bold;
-        background: linear-gradient(45deg, #03C75A, #029f47);
-        color: white;
-        border: none;
-        transition: all 0.3s;
-        box-shadow: 0 4px 15px rgba(3, 199, 90, 0.3);
+        width: 100%; border-radius: 8px; font-weight: bold; background: linear-gradient(45deg, #03C75A, #029f47);
+        color: white; border: none; transition: all 0.3s; box-shadow: 0 4px 15px rgba(3, 199, 90, 0.3);
     }
     .stButton > button:hover {
-        background: linear-gradient(45deg, #ffd700, #ffb900);
-        color: #032d19;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(255, 215, 0, 0.4);
+        background: linear-gradient(45deg, #ffd700, #ffb900); color: #032d19; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255, 215, 0, 0.4);
     }
-
-    /* 🏆 제목 및 Metrics 스타일 (황금빛 포인트) */
-    h1 {
-        color: #ffd700 !important;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-        font-weight: 800;
-        letter-spacing: -1px;
-    }
+    h1 { color: #ffd700 !important; text-shadow: 0 2px 4px rgba(0,0,0,0.5); font-weight: 800; letter-spacing: -1px; }
     h2, h3 { color: #f0f0f0 !important; }
-    
     .stMetric label { color: #aaa !important; }
     .stMetric [data-testid="stMetricValue"] { color: #ffd700 !important; font-weight: 800; }
-
-    /* 🛒 검색 결과 카드 스타일 */
     .result-card {
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        padding: 20px;
-        border-radius: 12px;
-        background-color: rgba(255, 255, 255, 0.02);
-        margin-bottom: 15px;
-        transition: border 0.3s;
+        border: 1px solid rgba(255, 255, 255, 0.05); padding: 20px; border-radius: 12px; background-color: rgba(255, 255, 255, 0.02); margin-bottom: 15px; transition: border 0.3s;
     }
-    .result-card:hover {
-        border: 1px solid rgba(255, 215, 0, 0.3);
-    }
-    
-    /* 입력창 스타일 */
+    .result-card:hover { border: 1px solid rgba(255, 215, 0, 0.3); }
     .stTextInput input, .stNumberInput input, .stSelectbox div {
-        background-color: rgba(0, 0, 0, 0.2) !important;
-        color: white !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: 8px !important;
+        background-color: rgba(0, 0, 0, 0.2) !important; color: white !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; border-radius: 8px !important;
     }
-    
-    /* 구분선 */
     hr { border: 0; border-top: 1px solid rgba(255, 215, 0, 0.1); }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🔐 3. 세션 상태 관리 (동일)
+# 🔐 3. 세션 상태 관리
 # ==========================================
 if 'helper_generated_text' not in st.session_state: st.session_state['helper_generated_text'] = ""
 if 'keyword_input' not in st.session_state: st.session_state['keyword_input'] = ""
@@ -146,9 +92,8 @@ if 'keywords_list' not in st.session_state: st.session_state['keywords_list'] = 
 if 'run_search' not in st.session_state: st.session_state['run_search'] = False
 
 # ==========================================
-# 🛠️ 4. 핵심 API 함수 (PNG 버그 수정 및 도매꾹 market 파라미터 추가)
+# 🛠️ 4. 핵심 API 함수
 # ==========================================
-
 def call_claude_api(body):
     try:
         headers = {
@@ -158,7 +103,6 @@ def call_claude_api(body):
         }
         body["model"] = "claude-sonnet-4-6"
         resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=body, timeout=80)
-        
         if resp.status_code == 200:
             return resp.json()["content"][0]["text"].strip()
         else:
@@ -192,7 +136,6 @@ def 필터링(items, 배송비=0):
 
 def 도매꾹검색(검색어, 개수=20):
     url = "https://domeggook.com/ssl/api/"
-    # 🚨 여기에 "market": "dome" 핵심 코드를 추가했습니다!
     params = {"ver": "4.1", "mode": "getItemList", "aid": DOMEGGOOK_API_KEY, "market": "dome", "om": "json", "kw": 검색어, "sz": 개수}
     try:
         data = requests.get(url, params=params).json()
@@ -229,7 +172,6 @@ def 검색_11번가(검색어, 개수=20):
         return sorted(상품목록, key=lambda x: x['총가격'])
     except: return []
 
-# 🏆 [고급화] 검색 결과 출력 레이아웃 개편
 def 출력_통합_결과_레이아웃(검색어):
     with st.spinner(f"'{검색어}' 최저가 분석 중..."):
         n_list = 필터링(네이버검색(검색어).get('items', []))
@@ -244,7 +186,6 @@ def 출력_통합_결과_레이아웃(검색어):
                 st.markdown(f"### {name}")
                 if data:
                     best = data[0]
-                    # 고급스러운 HTML 카드 형태로 출력
                     st.markdown(f"""
                     <div class="result-card">
                         <img src="{best['이미지']}" style="width:100%; border-radius:8px; margin-bottom:15px;">
@@ -280,7 +221,7 @@ def send_telegram(text):
     except: pass
 
 # ==========================================
-# 🖥️ 5. 사이드바 메뉴 (디자인 변경 반영)
+# 🖥️ 5. 사이드바 메뉴
 # ==========================================
 st.sidebar.markdown("# 👑 위탁의왕 Ultra")
 st.sidebar.markdown("---")
@@ -289,23 +230,18 @@ st.sidebar.markdown("---")
     "💰 마진 계산기", "📦 재고/가격 알림", "💎 블루오션 탐지"
 ], index=0)
 
-# --- [Menu 1] 홈 (고급스럽게 개편) ---
+# --- [Menu 1] 홈 ---
 if 메뉴 == "🏠 홈":
     st.markdown("<h1>👑 위탁의왕 자동화 대시보드 v6.0 Ultra</h1>", unsafe_allow_html=True)
     st.caption(f"📅 오늘 날짜: {datetime.now().strftime('%Y-%m-%d')} | 대표님, 오늘도 위탁 시장의 왕이 되어보시죠!")
     st.divider()
     
     col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("업무 모드", "매출 폭발 모드 🚀")
-    with col2:
-        st.metric("AI 마케터", "Sonnet Ultra")
-    with col3:
-        st.metric("디자인 티어", "Royal Gold")
+    with col1: st.metric("업무 모드", "매출 폭발 모드 🚀")
+    with col2: st.metric("AI 마케터", "Sonnet Ultra")
+    with col3: st.metric("디자인 티어", "Royal Gold")
     
     st.divider()
-    
-    # 👑 왕의 훈화 말씀 형태의 인트로
     st.markdown("""
     <div style="background-color:rgba(255,215,0,0.05); padding:30px; border-radius:15px; border:1px solid rgba(255,215,0,0.1);">
         <h3 style="color:#ffd700; margin-top:0;">👋 위탁의 왕, 대표님 환영합니다!</h3>
@@ -315,51 +251,66 @@ if 메뉴 == "🏠 홈":
             이 대시보드는 대표님을 단순한 셀러가 아닌, 시장을 지배하는 <b>'위탁의 왕'</b>으로 만들어드리기 위해 진화했습니다.<br>
             초졸한 디자인은 가고, 황금빛 성공의 기운을 담은 Ultra 버전으로 새롭게 시작하세요.
         </p>
-        <br>
-        <p style="color:#aaa; font-size:0.9rem;">👈 왼쪽 메뉴에서 원하는 강력한 도구를 선택하세요.</p>
     </div>
     """, unsafe_allow_html=True)
 
-# --- [Menu 2] 이미지로 검색 (디자인 컨셉 유지) ---
+# --- [Menu 2] 이미지로 검색 (완벽한 캡처 버튼 탑재 완료) ---
 elif 메뉴 == "📸 이미지로 검색":
     st.markdown("<h1>📸 AI 이미지 최저가 검색</h1>", unsafe_allow_html=True)
+    st.info("💡 상품을 캡처(Win+Shift+S)한 뒤, 아래 초록색 버튼을 클릭만 하세요! (파일창 절대 안 뜹니다)")
+    
     with st.container():
-        # 💡 [핵심] 대표님이 답답해하시던 파일창을 틀어막기 위해,
-        # 이 칸을 클릭한 상태에서 Ctrl+V를 누르면 사진이 파일창 없이 바로 올라가는 표준 코드로 바꿨습니다.
-        up_file = st.file_uploader("상품 사진 업로드 (또는 클릭 후 Ctrl+V)", type=['jpg', 'jpeg', 'png'], key="img_search_up")
-        
-        if up_file:
-            # --- [안전장치] 이미지 다이어트 및 RGB 변환 ---
-            img_bytes = up_file.getvalue()
-            pil_image = Image.open(io.BytesIO(img_bytes))
-            
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-            
-            # 8000픽셀 에러 방지용 축소
+        # 👑 진짜 캡처 전용 버튼 (streamlit_paste_button)
+        paste_result = paste_image_button(
+            label="📋 캡처한 이미지 바로 붙여넣기 (클릭!)",
+            background_color="#03C75A",
+            hover_background_color="#029f47",
+            text_color="#ffffff"
+        )
+
+        img_bytes = None
+
+        # 1. 캡처 버튼을 통해 이미지가 들어오면!
+        if paste_result.image_data is not None:
+            pil_image = paste_result.image_data
+            if pil_image.mode != 'RGB': pil_image = pil_image.convert('RGB')
             pil_image.thumbnail((1500, 1500))
-            
             buffered = io.BytesIO()
             pil_image.save(buffered, format="JPEG")
-            final_img_bytes = buffered.getvalue()
-            b64 = base64.b64encode(final_img_bytes).decode("utf-8")
+            img_bytes = buffered.getvalue()
+
+        # 2. 파일 업로드 창 (예비용)
+        st.write("---")
+        with st.expander("또는 내 컴퓨터의 파일로 업로드하기"):
+            up_file = st.file_uploader("파일 선택", type=['jpg', 'jpeg', 'png'])
+            if up_file:
+                img_bytes = up_file.getvalue()
+                pil_image = Image.open(io.BytesIO(img_bytes))
+                if pil_image.mode != 'RGB': pil_image = pil_image.convert('RGB')
+                pil_image.thumbnail((1500, 1500))
+                buffered = io.BytesIO()
+                pil_image.save(buffered, format="JPEG")
+                img_bytes = buffered.getvalue()
+
+        # --- 이미지가 정상적으로 세팅되면 분석 시작! ---
+        if img_bytes:
+            b64 = base64.b64encode(img_bytes).decode("utf-8")
             
-            # --- 화면 출력 및 분석 버튼 ---
             st.divider()
             col_u1, col_u2 = st.columns([1, 2])
             with col_u1:
-                st.image(final_img_bytes, width=300, caption="입력 방식: [Ctrl+V] 성공")
+                st.image(img_bytes, width=300, caption="성공적으로 불러왔습니다!")
             
             with col_u2:
                 st.markdown("### 1단계: AI 정밀 분석")
                 if st.button("🔍 AI 황금 키워드 5개 추출", key="btn_ai_kw"):
-                    with st.spinner("이미지 속 성공 DNA 분석 중..."):
+                    with st.spinner("이미지 분석 중..."):
                         body = {
-                            "model": "claude-sonnet-4-6", # 대표님 열쇠에 맞는 모델명
+                            "model": "claude-sonnet-4-6", 
                             "max_tokens": 300,
                             "messages": [{"role": "user", "content": [
                                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
-                                {"type": "text", "text": "당신은 한국의 10년차 탑티어 상품 소싱 MD입니다. 이 사진 속 물건이 정확히 무엇인지 분석하고, 네이버 쇼핑이나 도매꾹 검색용 명사 키워드 딱 5개만 콤마(,)로 구분해서 답변하세요."}
+                                {"type": "text", "text": "한국 쇼핑몰 검색용 명사 키워드 5개를 콤마로만 답변하세요."}
                             ]}]
                         }
                         res = call_claude_api(body)
@@ -367,7 +318,7 @@ elif 메뉴 == "📸 이미지로 검색":
                             st.session_state['keywords_list'] = [k.strip() for k in res.split(',')]
                             st.rerun()
 
-    # --- 기존 2단계, 3단계 검색 코드는 동일하게 유지 ---
+    # --- 2단계, 3단계 검색 코드 ---
     if st.session_state['keywords_list']:
         st.divider()
         st.markdown("### 2단계: 사냥할 키워드 선택")
@@ -386,34 +337,6 @@ elif 메뉴 == "📸 이미지로 검색":
             if st.button("🛒 실시간 통합 최저가 사냥 시작", type="primary", key="btn_main_search") or st.session_state.get('run_search'):
                 st.session_state['run_search'] = False
                 if search_kw: 출력_통합_결과_레이아웃(search_kw)
-
-    # --- 기존 2단계, 3단계 키워드 선택 및 검색 코드는 동일 ---
-    if st.session_state['keywords_list']:
-        st.divider()
-        st.markdown("### 2단계: 사냥할 키워드 선택")
-        cols = st.columns(len(st.session_state['keywords_list']))
-        for i, kw in enumerate(st.session_state['keywords_list']):
-            if cols[i].button(f"💎 {kw}", key=f"kw_{i}"):
-                st.session_state['keyword_input'] = kw
-                st.session_state['run_search'] = True
-                st.rerun()
-
-    if 'keyword_input' in st.session_state and st.session_state['keyword_input']:
-        st.divider()
-        with st.container():
-            st.markdown("### 3단계: 통합 검색어")
-            search_kw = st.text_input("🔎 검색어 수정", value=st.session_state['keyword_input'], key="input_search_kw")
-            if st.button("🛒 실시간 통합 최저가 사냥 시작", type="primary", key="btn_main_search") or st.session_state.get('run_search'):
-                st.session_state['run_search'] = False
-                if search_kw: 출력_통합_결과_레이아웃(search_kw)
-
-    st.divider()
-    with st.container():
-        st.markdown("### 3단계: 통합 검색어")
-        search_kw = st.text_input("🔎 검색어 수정 (선택한 키워드가 자동 입력됩니다)", value=st.session_state['keyword_input'], key="input_search_kw")
-        if st.button("🛒 실시간 통합 최저가 사냥 시작", type="primary", key="btn_main_search") or st.session_state['run_search']:
-            st.session_state['run_search'] = False
-            if search_kw: 출력_통합_결과_레이아웃(search_kw)
 
 # --- [Menu 3] 통합 최저가 검색 ---
 elif 메뉴 == "🔎 통합 최저가 검색":
@@ -424,17 +347,16 @@ elif 메뉴 == "🔎 통합 최저가 검색":
         if st.button("🚀 왕의 명령: 실시간 통합 비교 시작", type="primary", use_container_width=True, key="btn_text_search"):
             if text_kw: 출력_통합_결과_레이아웃(text_kw)
 
-# --- [Menu 4] 상품 등록 도우미 (마케팅 버전 디자인 유지) ---
+# --- [Menu 4] 상품 등록 도우미 ---
 elif 메뉴 == "🏪 상품 등록 도우미":
     st.markdown("<h1>🏪 AI 상세페이지 기획기 (Royal Copywriter)</h1>", unsafe_allow_html=True)
     with st.container():
         j_file = st.file_uploader("상품 사진 업로드", type=['jpg', 'jpeg', 'png'], key="j_up")
         if j_file:
-            img_type = j_file.type # 🚀 [버그 수정 반영] PNG/JPG 자동 인식
+            img_type = j_file.type
             img_bytes = j_file.getvalue()
             col_j1, col_j2 = st.columns([1, 2])
-            with col_j1:
-                st.image(img_bytes, width=400)
+            with col_j1: st.image(img_bytes, width=400)
             
             with col_j2:
                 p_info = st.text_input("상품명 또는 핵심 강조 포인트 (선택사항)", placeholder="예: 무소음, 파스텔 핑크, 안전 인증 완료")
@@ -446,7 +368,6 @@ elif 메뉴 == "🏪 상품 등록 도우미":
                     with st.spinner("왕실 카피라이터가 기획서를 작성 중입니다..."):
                         b64 = base64.b64encode(img_bytes).decode("utf-8")
                         prompt = f"""
-                        (프롬프트 내용은 v5.5와 동일하게 유지)
                          당신은 매출을 10배 올려주는 10년 차 탑티어 이커머스 카피라이터입니다.
                          첨부된 상품 이미지를 철저히 분석하고, 아래의 조건에 맞춰 고객이 당장 사고 싶게 만드는 상세페이지 기획안을 작성해주세요.
                          [기본 조건] - 타겟 고객: {target} - 글의 톤앤매너: {tone} - 상품 핵심 키워드/특징: {p_info if p_info else "이미지 분석 내용을 바탕으로 창의적으로 도출"}
@@ -454,7 +375,7 @@ elif 메뉴 == "🏪 상품 등록 도우미":
                         body = {
                             "max_tokens": 2000,
                             "messages": [{"role": "user", "content": [
-                                {"type": "image", "source": {"type": "base64", "media_type": img_type, "data": b64}}, # 🚀 동적 형식 적용!
+                                {"type": "image", "source": {"type": "base64", "media_type": img_type, "data": b64}},
                                 {"type": "text", "text": prompt}
                             ]}]
                         }
@@ -492,7 +413,6 @@ elif 메뉴 == "💰 마진 계산기":
 elif 메뉴 == "📦 재고/가격 알림":
     st.markdown("<h1>📦 공급처 가격 및 재고 감시</h1>", unsafe_allow_html=True)
     
-    # 보안상 개인정보는 마스킹 처리하여 출력 (캡처 방지)
     def mask_chat_id(chat_id): return chat_id[:3] + "****" + chat_id[-2:] if chat_id else "미등록"
     st.info(f"🔔 텔레그램 수신 ID: {mask_chat_id(TELEGRAM_CHAT_ID)}")
     
@@ -507,7 +427,6 @@ elif 메뉴 == "📦 재고/가격 알림":
             n_no = c1.text_input("도매꾹 상품번호 입력", key="n_no")
             n_name = c2.text_input("관리 이름 입력", key="n_name")
             if st.button("👑 모니터링 명단에 등록", use_container_width=True):
-                # 🚨 여기도 market=dome 추가 완료!
                 p = {"ver": "4.1", "aid": DOMEGGOOK_API_KEY, "market": "dome", "om": "json", "mode": "getItemList", "itemNo": n_no}
                 item_data = requests.get("https://domeggook.com/ssl/api/", params=p).json()
                 if 'domeggook' in item_data and 'list' in item_data['domeggook'] and 'item' in item_data['domeggook']['list']:
@@ -524,7 +443,6 @@ elif 메뉴 == "📦 재고/가격 알림":
         if st.button("🔄 전수 점검 및 텔레그램 가격체크 시작", type="primary", use_container_width=True):
             with st.spinner("공급처 데이터 전수 확인 중..."):
                 for i, s in enumerate(목록):
-                    # 🚨 여기도 market=dome 추가 완료!
                     p = {"ver": "4.1", "aid": DOMEGGOOK_API_KEY, "market": "dome", "om": "json", "mode": "getItemList", "itemNo": s['no']}
                     res_data = requests.get("https://domeggook.com/ssl/api/", params=p).json()
                     if 'domeggook' in res_data and 'list' in res_data['domeggook'] and 'item' in res_data['domeggook']['list']:
