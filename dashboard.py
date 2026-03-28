@@ -110,7 +110,7 @@ def 네이버검색(상품명, 개수=50):
     url = "https://openapi.naver.com/v1/search/shop.json"
     headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
     params = {"query": 상품명, "sort": "sim", "display": 개수}
-    try: return requests.get(url, headers=headers, params=params).json()
+    try: return requests.get(url, headers=headers, params=params, timeout=5).json()
     except: return {"items": []}
 
 def 필터링(items, 배송비=0):
@@ -132,7 +132,7 @@ def 도매꾹검색(검색어, 개수=20):
     url = "https://domeggook.com/ssl/api/"
     params = {"ver": "4.1", "mode": "getItemList", "aid": DOMEGGOOK_API_KEY, "market": "dome", "om": "json", "kw": 검색어, "sz": 개수}
     try:
-        data = requests.get(url, params=params).json()
+        data = requests.get(url, params=params, timeout=5).json()
         items = data['domeggook']['list']['item']
         if isinstance(items, dict): items = [items]
         결과 = []
@@ -151,7 +151,7 @@ def 검색_11번가(검색어, 개수=20):
     url = "http://openapi.11st.co.kr/openapi/OpenApiService.tmall"
     params = {"key": ELEVENST_API_KEY, "apiCode": "ProductSearch", "keyword": 검색어, "pageSize": 개수}
     try:
-        resp = requests.get(url, params=params)
+        resp = requests.get(url, params=params, timeout=5)
         root = ET.fromstring(resp.content.decode('euc-kr', errors='ignore'))
         상품목록 = []
         for item in root.findall('.//Product'):
