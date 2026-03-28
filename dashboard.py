@@ -372,25 +372,62 @@ elif 메뉴 == "🔎 통합 최저가 검색":
 # --- [Menu 4] 상품 등록 도우미 ---
 # ==========================================
 elif 메뉴 == "🏪 상품 등록 도우미":
-    st.markdown("<h1>🏪 AI 상세페이지 기획기 (Royal Copywriter)</h1>", unsafe_allow_html=True)
-    with st.container():
+    st.markdown("<h1>🏪 AI 상세페이지 기획 + 📦 오픈마켓 등록 준비</h1>", unsafe_allow_html=True)
+
+    # pyperclip 없이 JS 클립보드 복사를 위한 함수
+    def 클립보드_복사_버튼(텍스트, 버튼라벨, key):
+        escaped = 텍스트.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+        st.components.v1.html(f"""
+        <button onclick="navigator.clipboard.writeText(`{escaped}`).then(()=>{{
+            this.innerText='✅ 복사 완료!'; setTimeout(()=>this.innerText='{버튼라벨}',2000);
+        }})" style="
+            background:linear-gradient(45deg,#03C75A,#029f47); color:white;
+            border:none; padding:10px 20px; border-radius:8px; font-size:14px;
+            font-weight:bold; cursor:pointer; width:100%; margin-top:5px;
+        ">{버튼라벨}</button>
+        """, height=50)
+
+    탭A, 탭B = st.tabs(["✨ AI 상세페이지 생성", "📦 오픈마켓 등록 준비"])
+
+    # ── TAB A: 기존 AI 상세페이지 생성 ────────────────────────────
+    with 탭A:
         j_file = st.file_uploader("상품 사진 업로드", type=['jpg', 'jpeg', 'png'], key="j_up")
         if j_file:
             img_type = j_file.type
             img_bytes = j_file.getvalue()
             col_j1, col_j2 = st.columns([1, 2])
-            with col_j1: st.image(img_bytes, width=400)
+            with col_j1:
+                st.image(img_bytes, width=400)
             with col_j2:
                 p_info = st.text_input("상품명 또는 핵심 강조 포인트 (선택사항)", placeholder="예: 무소음, 파스텔 핑크, 안전 인증 완료")
                 c1, c2 = st.columns(2)
                 target = c1.selectbox("타겟 고객", ["전체", "깐깐한 육아맘", "가성비 따지는 자취생", "트렌디한 2030 직장인", "건강을 챙기는 5060"])
                 tone = c2.selectbox("글의 톤앤매너", ["감성을 자극하는 따뜻한 톤", "전문가 느낌의 신뢰감 있는 톤", "유머러스하고 친근한 톤", "결핍을 찌르는 강력한 톤"])
+
                 if st.button("✨ 매혹적인 황금 상세페이지 생성", type="primary", use_container_width=True, key="btn_desc_gen"):
                     with st.spinner("왕실 카피라이터가 기획서를 작성 중입니다..."):
                         b64 = base64.b64encode(img_bytes).decode("utf-8")
                         prompt = f"""당신은 매출을 10배 올려주는 10년 차 탑티어 이커머스 카피라이터입니다.
-첨부된 상품 이미지를 철저히 분석하고, 아래의 조건에 맞춰 고객이 당장 사고 싶게 만드는 상세페이지 기획안을 작성해주세요.
-[기본 조건] - 타겟 고객: {target} - 글의 톤앤매너: {tone} - 상품 핵심 키워드/특징: {p_info if p_info else "이미지 분석 내용을 바탕으로 창의적으로 도출"}"""
+첨부된 상품 이미지를 철저히 분석하고, 아래 조건에 맞게 상세페이지 기획안을 작성해주세요.
+[기본 조건] - 타겟 고객: {target} - 톤앤매너: {tone} - 핵심 특징: {p_info if p_info else "이미지 분석 내용을 바탕으로 도출"}
+
+아래 형식으로 반드시 출력하세요:
+
+### 🏷️ 추천 상품명 (30자 이내, 3가지)
+1.
+2.
+3.
+
+### 💡 핵심 셀링포인트 3가지
+
+### 📝 상단 후킹 문구 (3~5줄)
+
+### ✅ 상품 특징 5가지
+
+### 🎯 검색 키워드 10개
+(콤마로 구분)
+
+### 💰 가격 전략 제안"""
                         body = {
                             "max_tokens": 2000,
                             "messages": [{"role": "user", "content": [
@@ -401,15 +438,190 @@ elif 메뉴 == "🏪 상품 등록 도우미":
                         desc = call_claude_api(body)
                         if desc:
                             st.session_state['helper_generated_text'] = desc
+                            # 상품명/키워드 파싱해서 저장
+                            lines = desc.split('\n')
+                            상품명후보 = []
+                            키워드라인 = ""
+                            for i, line in enumerate(lines):
+                                if line.strip().startswith('1.') or line.strip().startswith('2.') or line.strip().startswith('3.'):
+                                    상품명후보.append(line.strip()[2:].strip())
+                                if '콤마' in line or (',' in line and len(line) > 20):
+                                    키워드라인 = line.strip()
+                            st.session_state['parsed_titles'] = 상품명후보
+                            st.session_state['parsed_keywords'] = 키워드라인
                             st.rerun()
 
-    if st.session_state['helper_generated_text']:
-        st.divider()
-        with st.container():
-            st.markdown("### 📊 완벽한 황금 상세페이지 기획안")
+        if st.session_state.get('helper_generated_text'):
+            st.divider()
+            st.markdown("### 📊 AI 상세페이지 기획안")
             st.markdown(st.session_state['helper_generated_text'])
             st.divider()
-            st.text_area("📋 복사하기 (Ctrl+A로 전체 선택)", value=st.session_state['helper_generated_text'], height=300, key="txt_area_desc")
+            st.text_area("📋 전체 복사", value=st.session_state['helper_generated_text'], height=250, key="txt_area_desc")
+            st.info("💡 기획안 완성 후 **📦 오픈마켓 등록 준비** 탭으로 이동하세요!")
+
+    # ── TAB B: 오픈마켓 등록 준비 ──────────────────────────────────
+    with 탭B:
+        st.caption("AI가 생성한 기획안을 바탕으로 각 플랫폼 등록에 필요한 데이터를 자동완성합니다.")
+
+        # 등록 정보 입력 폼
+        with st.container():
+            st.markdown("### 📝 상품 등록 정보 입력")
+            col_f1, col_f2 = st.columns(2)
+
+            # 상품명: AI 생성된 후보가 있으면 기본값으로
+            ai_titles = st.session_state.get('parsed_titles', [])
+            기본상품명 = ai_titles[0] if ai_titles else ""
+
+            상품명 = col_f1.text_input("상품명 *", value=기본상품명, placeholder="예: 프리미엄 무선 충전 가습기", key="reg_name")
+            판매가 = col_f1.number_input("판매가 (원) *", value=19900, key="reg_price")
+            소싱가 = col_f1.number_input("소싱가 (원)", value=8000, key="reg_cost")
+            배송비 = col_f2.number_input("배송비 (원, 무료배송=0)", value=0, key="reg_ship")
+            재고수량 = col_f2.number_input("재고 수량", value=999, key="reg_stock")
+            브랜드 = col_f2.text_input("브랜드명 (없으면 '상세설명참조')", value="상세설명참조", key="reg_brand")
+
+            # 카테고리 선택
+            카테고리 = st.selectbox("카테고리 *", [
+                "생활/건강 > 생활용품", "생활/건강 > 주방용품", "뷰티 > 스킨케어",
+                "디지털/가전 > 주방가전", "패션잡화 > 가방", "스포츠/레저 > 피트니스",
+                "출산/육아 > 유아용품", "반려동물 > 사료/간식", "식품 > 가공식품"
+            ], key="reg_category")
+
+            # 키워드: AI 파싱된 것 기본값
+            ai_kw = st.session_state.get('parsed_keywords', '')
+            키워드 = st.text_input("검색 키워드 (콤마 구분, 최대 10개)", value=ai_kw, placeholder="무선가습기, 초음파가습기, 미니가습기", key="reg_keywords")
+
+            # 상세설명: AI 기획안 전체
+            상세설명 = st.text_area("상세 설명", value=st.session_state.get('helper_generated_text', ''), height=150, key="reg_desc")
+
+        st.divider()
+
+        # ── 마진 자동 계산 ──────────────────────────────────────────
+        if 판매가 > 0 and 소싱가 > 0:
+            st.markdown("### 💰 마진 자동 계산")
+            fees = {"스마트스토어": 0.06, "쿠팡": 0.11, "11번가": 0.13}
+            m_cols = st.columns(3)
+            for i, (platform, fee) in enumerate(fees.items()):
+                수수료 = int(판매가 * fee)
+                pg수수료 = int(판매가 * 0.036)
+                마진 = 판매가 - 소싱가 - 배송비 - 수수료 - pg수수료
+                마진율 = round(마진 / 판매가 * 100, 1)
+                색 = "#03C75A" if 마진율 >= 20 else "#ffd700" if 마진율 >= 10 else "#ff4b4b"
+                with m_cols[i]:
+                    st.markdown(f"""
+                    <div style="border:1px solid {색}; border-radius:10px; padding:15px; text-align:center;">
+                        <b style="color:#fff;">{platform}</b><br>
+                        <span style="color:{색}; font-size:1.3rem; font-weight:bold;">{마진율}%</span><br>
+                        <span style="color:#aaa; font-size:0.85rem;">마진 {마진:,}원</span><br>
+                        <span style="color:#777; font-size:0.8rem;">수수료 {수수료+pg수수료:,}원</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        st.divider()
+
+        # ── 클립보드 복사 버튼들 ────────────────────────────────────
+        st.markdown("### 📋 플랫폼 등록용 클립보드 복사")
+        st.caption("버튼 클릭 한 번으로 해당 정보가 클립보드에 복사됩니다.")
+
+        clip_col1, clip_col2, clip_col3 = st.columns(3)
+
+        with clip_col1:
+            st.markdown("**📌 상품명 복사**")
+            클립보드_복사_버튼(상품명, "📌 상품명 복사", "clip_title")
+            if ai_titles:
+                st.caption("AI 추천 후보:")
+                for t in ai_titles[:3]:
+                    클립보드_복사_버튼(t, f"📋 {t[:20]}...", f"clip_t_{t[:5]}")
+
+        with clip_col2:
+            st.markdown("**🎯 키워드 복사**")
+            클립보드_복사_버튼(키워드, "🎯 키워드 전체 복사", "clip_kw")
+            st.markdown("**💰 가격 복사**")
+            클립보드_복사_버튼(str(판매가), f"💰 판매가 {판매가:,}원 복사", "clip_price")
+
+        with clip_col3:
+            st.markdown("**📝 상세설명 복사**")
+            클립보드_복사_버튼(상세설명, "📝 상세설명 전체 복사", "clip_desc")
+            st.markdown("**📦 전체 정보 복사**")
+            전체정보 = f"""[상품 등록 정보]
+상품명: {상품명}
+판매가: {판매가:,}원
+소싱가: {소싱가:,}원
+배송비: {배송비:,}원 {'(무료배송)' if 배송비==0 else ''}
+재고: {재고수량}개
+브랜드: {브랜드}
+카테고리: {카테고리}
+키워드: {키워드}
+
+[상세설명]
+{상세설명}"""
+            클립보드_복사_버튼(전체정보, "📦 전체 정보 복사", "clip_all")
+
+        st.divider()
+
+        # ── 스마트스토어 엑셀 자동생성 ─────────────────────────────
+        st.markdown("### 📊 스마트스토어 엑셀 양식 자동생성")
+        st.caption("네이버 스마트스토어 **상품 일괄등록 양식**에 맞춰 자동으로 채워드립니다.")
+
+        if st.button("📥 스마트스토어 엑셀 파일 생성", type="primary", use_container_width=True, key="btn_excel"):
+            키워드목록 = [k.strip() for k in 키워드.split(',')][:10]
+            # 10개 미만이면 빈칸으로 채우기
+            while len(키워드목록) < 10:
+                키워드목록.append('')
+
+            excel_data = {
+                "상품명": [상품명],
+                "판매가": [판매가],
+                "재고수량": [재고수량],
+                "배송비": [배송비],
+                "브랜드": [브랜드],
+                "제조사": [브랜드],
+                "카테고리": [카테고리],
+                "검색태그1": [키워드목록[0]],
+                "검색태그2": [키워드목록[1]],
+                "검색태그3": [키워드목록[2]],
+                "검색태그4": [키워드목록[3]],
+                "검색태그5": [키워드목록[4]],
+                "검색태그6": [키워드목록[5]],
+                "검색태그7": [키워드목록[6]],
+                "검색태그8": [키워드목록[7]],
+                "검색태그9": [키워드목록[8]],
+                "검색태그10": [키워드목록[9]],
+                "상품설명": [상세설명],
+                "원산지": ["국내산"],
+                "과세여부": ["과세"],
+                "등록일": [datetime.now().strftime('%Y-%m-%d')]
+            }
+
+            df_excel = pd.DataFrame(excel_data)
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                df_excel.to_excel(writer, index=False, sheet_name='상품등록')
+
+                # 컬럼 너비 자동조절
+                ws = writer.sheets['상품등록']
+                for col in ws.columns:
+                    max_len = max(len(str(cell.value or '')) for cell in col)
+                    ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
+
+            excel_buffer.seek(0)
+            파일명 = f"스마트스토어_등록_{상품명[:10]}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+            st.download_button(
+                label="⬇️ 엑셀 파일 다운로드",
+                data=excel_buffer.getvalue(),
+                file_name=파일명,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+            st.success(f"✅ '{파일명}' 생성 완료! 네이버 스마트스토어 > 상품관리 > 상품 일괄등록에서 업로드하세요.")
+
+        st.divider()
+
+        # ── 플랫폼별 등록 바로가기 링크 ────────────────────────────
+        st.markdown("### 🔗 플랫폼 등록 페이지 바로가기")
+        link_col1, link_col2, link_col3 = st.columns(3)
+        link_col1.link_button("🟢 스마트스토어 상품등록", "https://sell.smartstore.naver.com/#/products/new", use_container_width=True)
+        link_col2.link_button("🔴 쿠팡 상품등록", "https://wing.coupang.com/", use_container_width=True)
+        link_col3.link_button("🔵 11번가 상품등록", "https://soffice.11st.co.kr/", use_container_width=True)
 
 # ==========================================
 # --- [Menu 5] 마진 계산기 ---
