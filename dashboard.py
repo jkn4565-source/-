@@ -199,6 +199,49 @@ def 출력_통합_결과_레이아웃(검색어):
         combined = sorted(n_list[:10] + d_list[:10] + e_list[:10], key=lambda x: x['총가격'])
         if combined:
             st.divider()
+            # ── 이력 관리 ──────────────────────────────────────────────
+        이력파일 = "추천이력.json"
+
+        def 이력_로드():
+            if os.path.exists(이력파일):
+                return json.load(open(이력파일, 'r', encoding='utf-8'))
+            return {}  # {"2024-01-01": ["키워드1", "키워드2", ...], ...}
+
+        def 이력_저장(날짜, 키워드목록):
+            data = 이력_로드()
+            기존 = data.get(날짜, [])
+            data[날짜] = list(set(기존 + 키워드목록))
+            json.dump(data, open(이력파일, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+
+        def 전체_사용된_키워드():
+            data = 이력_로드()
+            모든키워드 = []
+            for kw_list in data.values():
+                모든키워드.extend(kw_list)
+            return set(모든키워드)
+
+        # ── 이력 현황 표시 ──────────────────────────────────────────
+        이력data = 이력_로드()
+        총키워드수 = sum(len(v) for v in 이력data.values())
+
+        col_hist1, col_hist2, col_hist3 = st.columns([2, 2, 1])
+        col_hist1.metric("📋 누적 추천 키워드", f"{총키워드수}개")
+        col_hist2.metric("📅 추천 실행 일수", f"{len(이력data)}일")
+
+        with col_hist3:
+            if st.button("🗑️ 이력 초기화", key="btn_reset_history", type="secondary"):
+                if os.path.exists(이력파일):
+                    os.remove(이력파일)
+                st.success("초기화 완료!")
+                st.rerun()
+
+        # 날짜별 이력 펼쳐보기
+        if 이력data:
+            with st.expander("📖 날짜별 추천 이력 보기"):
+                for 날짜, kw_list in sorted(이력data.items(), reverse=True):
+                    st.markdown(f"**{날짜}** — {', '.join(kw_list)}")
+
+        st.divider()
             st.markdown("## 🏆 전체 통합 최저가 순위 TOP 10")
             for i, item in enumerate(combined[:10], 1):
                 with st.container():
@@ -530,6 +573,10 @@ elif 메뉴 == "💎 블루오션 탐지 + 🤖 자동추천":
         # ── 함수 정의 ──────────────────────────────────────────────
 
         def ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수):
+            # 이미 사용된 키워드 불러오기
+            사용된키워드 = 전체_사용된_키워드()
+            제외목록 = ", ".join(사용된키워드) if 사용된키워드 else "없음"
+
             prompt = f"""당신은 한국 스마트스토어/쿠팡 위탁판매 전문 MD입니다.
 아래 조건에 맞게 '하루 10개 이상' 팔릴 가능성이 높은 상품 키워드를 추천해주세요.
 
@@ -539,6 +586,7 @@ elif 메뉴 == "💎 블루오션 탐지 + 🤖 자동추천":
 - 추천 개수: {추천수}개
 - 기준: 계절성/트렌드 반영, 검색량 대비 경쟁 적은 블루오션 위주
 - 레드오션(무선이어폰, 텀블러 등) 제외
+- ⚠️ 아래 키워드는 이미 추천된 적 있으므로 절대 중복 추천 금지: [{제외목록}]
 
 [출력] 반드시 JSON 배열만. 설명 없음.
 [
@@ -549,7 +597,10 @@ elif 메뉴 == "💎 블루오션 탐지 + 🤖 자동추천":
             res = call_claude_api(body)
             if res:
                 try:
-                    return json.loads(res.replace("```json","").replace("```","").strip())
+                    결과 = json.loads(res.replace("```json","").replace("```","").strip())
+                    # 혹시 AI가 중복 추천했을 경우 코드 레벨에서 2중 차단
+                    결과 = [item for item in 결과 if item['keyword'] not in 사용된키워드]
+                    return 결과
                 except:
                     st.error("AI 응답 파싱 실패. 다시 시도해주세요.")
             return []
@@ -634,7 +685,9 @@ elif 메뉴 == "💎 블루오션 탐지 + 🤖 자동추천":
                 st.error("키워드 생성 실패. 다시 시도해주세요.")
                 st.stop()
             st.success(f"✅ {len(키워드목록)}개 키워드 생성 완료!")
-
+# ← 이 줄 추가: 오늘 날짜로 키워드 이력 저장
+            오늘 = datetime.now().strftime('%Y-%m-%d')
+            이력_저장(오늘, [item['keyword'] for item in 키워드목록])
             # STEP 2
             st.markdown("### 📊 STEP 2 — 네이버 경쟁강도 분석")
             키워드목록 = 경쟁강도_필터(키워드목록)
