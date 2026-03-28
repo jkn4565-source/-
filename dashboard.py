@@ -254,13 +254,13 @@ if 메뉴 == "🏠 홈":
     </div>
     """, unsafe_allow_html=True)
 
-# --- [Menu 2] 이미지로 검색 (완벽한 캡처 버튼 탑재 완료) ---
+# --- [Menu 2] 이미지로 검색 (완벽한 캡처 버튼 + 9개 키워드 렌즈 모드) ---
 elif 메뉴 == "📸 이미지로 검색":
-    st.markdown("<h1>📸 AI 이미지 최저가 검색</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>📸 AI 이미지 최저가 검색 (Lens Mode)</h1>", unsafe_allow_html=True)
     st.info("💡 상품을 캡처(Win+Shift+S)한 뒤, 아래 초록색 버튼을 클릭만 하세요! (파일창 절대 안 뜹니다)")
     
     with st.container():
-        # 👑 진짜 캡처 전용 버튼 (streamlit_paste_button)
+        # 👑 진짜 캡처 전용 버튼
         paste_result = paste_image_button(
             label="📋 캡처한 이미지 바로 붙여넣기 (클릭!)",
             background_color="#03C75A",
@@ -303,14 +303,21 @@ elif 메뉴 == "📸 이미지로 검색":
             
             with col_u2:
                 st.markdown("### 1단계: AI 정밀 분석")
-                if st.button("🔍 AI 황금 키워드 5개 추출", key="btn_ai_kw"):
-                    with st.spinner("이미지 분석 중..."):
+                # 🚨 버튼 이름 5개 -> 9개로 변경
+                if st.button("🔍 AI 황금 키워드 9개 추출", key="btn_ai_kw"):
+                    with st.spinner("이미지 정밀 분석 중... (브랜드/모델명 탐색)"):
+                        # 🚨 네이버 렌즈급 성능을 위한 '호랑이 MD' 프롬프트 장착
+                        prompt_text = """당신은 한국의 10년 차 탑티어 상품 소싱 MD입니다. 사진을 분석하여 다음 규칙을 엄격히 지켜 답변하세요.
+                        1. 사진 속 제품의 정확한 브랜드와 모델명(예: 샥즈 E310, 아이폰15 등)을 인식할 수 있다면, 가장 앞쪽 키워드에 그 브랜드와 모델명을 적으세요.
+                        2. 특정 모델을 모르겠다면, 네이버/도매꾹에서 이 상품을 찾을 때 쓸 구체적인 일반 명사(예: 귀걸이형 무선 이어폰, 오픈형 블루투스 이어폰 등)를 적으세요.
+                        3. 총 9개의 명사형 키워드만 콤마(,)로 구분해서 출력하세요. (인사말이나 부가 설명은 절대 쓰지 마세요)"""
+                        
                         body = {
                             "model": "claude-sonnet-4-6", 
                             "max_tokens": 300,
                             "messages": [{"role": "user", "content": [
                                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
-                                {"type": "text", "text": "한국 쇼핑몰 검색용 명사 키워드 5개를 콤마로만 답변하세요."}
+                                {"type": "text", "text": prompt_text}
                             ]}]
                         }
                         res = call_claude_api(body)
@@ -318,17 +325,21 @@ elif 메뉴 == "📸 이미지로 검색":
                             st.session_state['keywords_list'] = [k.strip() for k in res.split(',')]
                             st.rerun()
 
-    # --- 2단계, 3단계 검색 코드 ---
+    # --- 2단계: 9개 키워드 깔끔하게 3줄 배치 ---
     if st.session_state['keywords_list']:
         st.divider()
         st.markdown("### 2단계: 사냥할 키워드 선택")
-        cols = st.columns(len(st.session_state['keywords_list']))
-        for i, kw in enumerate(st.session_state['keywords_list']):
-            if cols[i].button(f"💎 {kw}", key=f"kw_{i}"):
+        
+        # 🚨 9개의 버튼을 3개씩 3줄로 깔끔하게 정리하는 마법의 코드
+        k_list = st.session_state['keywords_list']
+        cols = st.columns(3)
+        for i, kw in enumerate(k_list):
+            if cols[i % 3].button(f"💎 {kw}", key=f"kw_{i}", use_container_width=True):
                 st.session_state['keyword_input'] = kw
                 st.session_state['run_search'] = True
                 st.rerun()
 
+    # --- 3단계 검색 코드 ---
     if 'keyword_input' in st.session_state and st.session_state['keyword_input']:
         st.divider()
         with st.container():
