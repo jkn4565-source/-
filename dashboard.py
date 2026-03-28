@@ -20,7 +20,14 @@ try:
     DOMEGGOOK_API_KEY = st.secrets["DOMEGGOOK_API_KEY"]
     ELEVENST_API_KEY = st.secrets["ELEVENST_API_KEY"]
     CLAUDE_API_KEY = st.secrets["CLAUDE_API_KEY"]
-    TELEGRAM_BOT_TOKEN = st.secrets["TELEGRAM_BOT_TOKEN"]
+    TELEGRAM_BOT_TOKEN = st.secrets["TELEGRAM_BOT_TOKEN"]NameError: This app has encountered an error. The original error message is redacted to prevent data leaks. Full error details have been recorded in the logs (if you're on Streamlit Cloud, click on 'Manage app' in the lower right of your app).
+Traceback:
+File "/mount/src/-/dashboard.py", line 683, in <module>
+    키워드목록 = ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수)
+                 ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/mount/src/-/dashboard.py", line 577, in ai_트렌드_키워드_생성
+    사용된키워드 = 전체_사용된_키워드()
+                   ^^^^^^^^^^^^^^^^^^
     TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
 except KeyError as e:
     st.error(f"시크릿 키 설정 오류: {e}")
@@ -571,7 +578,27 @@ elif 메뉴 == "💎 블루오션 탐지 + 🤖 자동추천":
         st.divider()
 
         # ── 함수 정의 ──────────────────────────────────────────────
+        def 이력_로드():
+            if os.path.exists(이력파일):
+                return json.load(open(이력파일, 'r', encoding='utf-8'))
+            return {}
 
+        def 이력_저장(날짜, 키워드목록):
+            data = 이력_로드()
+            기존 = data.get(날짜, [])
+            data[날짜] = list(set(기존 + 키워드목록))
+            json.dump(data, open(이력파일, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+
+        def 전체_사용된_키워드():
+            data = 이력_로드()
+            모든키워드 = []
+            for kw_list in data.values():
+                모든키워드.extend(kw_list)
+            return set(모든키워드)
+
+        def ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수):
+            사용된키워드 = 전체_사용된_키워드()
+            # ... 이하 동일
         def ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수):
             # 이미 사용된 키워드 불러오기
             사용된키워드 = 전체_사용된_키워드()
