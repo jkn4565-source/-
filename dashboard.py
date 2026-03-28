@@ -20,7 +20,7 @@ try:
     DOMEGGOOK_API_KEY = st.secrets["DOMEGGOOK_API_KEY"]
     ELEVENST_API_KEY = st.secrets["ELEVENST_API_KEY"]
     CLAUDE_API_KEY = st.secrets["CLAUDE_API_KEY"]
-    TELEGRAM_BOT_TOKEN = st.secrets["TELEGRAM_BOT_TOKEN"]NameError: This app has encountered an error. The original error message is redacted to prevent data leaks. Full error details have been recorded in the logs (if you're on Streamlit Cloud, click on 'Manage app' in the lower right of your app).
+    TELEGRAM_BOT_TOKEN = st.secrets["TELEGRAM_BOT_TOKEN"]
 Traceback:
 File "/mount/src/-/dashboard.py", line 683, in <module>
     키워드목록 = ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수)
