@@ -241,7 +241,7 @@ def 출력_통합_결과_레이아웃(검색어):
                 for 날짜, kw_list in sorted(이력data.items(), reverse=True):
                     st.markdown(f"**{날짜}** — {', '.join(kw_list)}")
 
-        st.divider()
+            st.divider()
             st.markdown("## 🏆 전체 통합 최저가 순위 TOP 10")
             for i, item in enumerate(combined[:10], 1):
                 with st.container():
