@@ -5,6 +5,7 @@ import json
 import xml.etree.ElementTree as ET
 import base64
 import os
+import time
 from datetime import datetime
 from PIL import Image
 import io
@@ -21,7 +22,7 @@ try:
     CLAUDE_API_KEY = st.secrets["CLAUDE_API_KEY"]
     TELEGRAM_BOT_TOKEN = st.secrets["TELEGRAM_BOT_TOKEN"]
     TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
-    RAPID_API_KEY = st.secrets["RAPID_API_KEY"]
+    RAPID_API_KEY = st.secrets.get("RAPID_API_KEY", "") # 글로벌 소싱용 추가
 except KeyError as e:
     st.error(f"시크릿 키 설정 오류: {e}")
     st.stop()
@@ -101,11 +102,8 @@ def call_claude_api(body):
         resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=body, timeout=80)
         if resp.status_code == 200:
             return resp.json()["content"][0]["text"].strip()
-        else:
-            st.error(f"Claude API 오류 ({resp.status_code}): {resp.text}")
-            return None
-    except Exception as e:
-        st.error(f"API 연결 중 오류 발생: {str(e)}")
+        return None
+    except:
         return None
 
 def 네이버검색(상품명, 개수=50):
@@ -169,14 +167,9 @@ def 검색_11번가(검색어, 개수=20):
     except: return []
 
 def 검색_글로벌_알리(검색어, 개수=20):
-    import time # 쿨타임을 주기 위한 모듈 추가
-    
-    # 개발자가 뚫어놓은 예비 서버들 4개를 모두 준비합니다.
     endpoints = [
         "https://aliexpress-datahub.p.rapidapi.com/item_search_2",
-        "https://aliexpress-datahub.p.rapidapi.com/item_search_3",
-        "https://aliexpress-datahub.p.rapidapi.com/item_search_4",
-        "https://aliexpress-datahub.p.rapidapi.com/item_search_5"
+        "https://aliexpress-datahub.p.rapidapi.com/item_search_3"
     ]
     querystring = {"q": 검색어, "page": "1"}
     headers = {
@@ -185,25 +178,15 @@ def 검색_글로벌_알리(검색어, 개수=20):
     }
     
     response = None
-    # 4개의 서버를 순서대로 하나씩 찔러봅니다.
     for url in endpoints:
         try:
-            response = requests.get(url, headers=headers, params=querystring, timeout=10)
-            
-            # 200(성공)이 뜨면 즉시 반복문을 멈추고 데이터를 가져옵니다!
-            if response.status_code == 200:
-                break 
-                
-            # 429(한도초과)나 에러가 뜨면 1.5초 쉬었다가 다음 예비 서버로 넘어갑니다.
-            time.sleep(1.5) 
+            response = requests.get(url, headers=headers, params=querystring, timeout=5) # 타임아웃 5초로 단축
+            if response.status_code == 200: break 
         except:
-            time.sleep(1.5)
             continue
 
-    # 4개 서버를 다 돌았는데도 실패하면 안내 메시지 출력
     if not response or response.status_code != 200:
-        st.warning(f"⚠️ 현재 알리 API 서버들 모두 혼잡 상태입니다 (코드 {response.status_code if response else '알수없음'}). 1분 뒤 다시 시도해주세요.")
-        return []
+        return [] # 에러 뿜지 않고 조용히 빈 리스트 반환 (플랜B 가동을 위해)
         
     try:
         data = response.json()
@@ -211,10 +194,8 @@ def 검색_글로벌_알리(검색어, 개수=20):
         items_data = []
         
         if 'result' in data:
-            if 'resultList' in data['result']:
-                items_data = data['result']['resultList']
-            elif isinstance(data['result'], list):
-                items_data = data['result']
+            if 'resultList' in data['result']: items_data = data['result']['resultList']
+            elif isinstance(data['result'], list): items_data = data['result']
 
         for item in items_data:
             item_info = item.get('item', {})
@@ -224,48 +205,38 @@ def 검색_글로벌_알리(검색어, 개수=20):
             krw_price = int(usd_price * 1500)
             
             sales = int(item_info.get('sales', 0))
-            free_shipping = delivery.get('freeShipping', False)
-            
             if sales >= 0: 
                 img_url = item_info.get('image', '')
-                if img_url and not img_url.startswith('http'):
-                    img_url = "https:" + img_url
-
+                if img_url and not img_url.startswith('http'): img_url = "https:" + img_url
                 link_url = item_info.get('itemUrl', '')
-                if link_url and not link_url.startswith('http'):
-                    link_url = "https:" + link_url
+                if link_url and not link_url.startswith('http'): link_url = "https:" + link_url
 
                 상품목록.append({
                     "제목": item_info.get('title', ''),
-                    "가격": krw_price,
-                    "총가격": krw_price,
-                    "판매량": sales,
+                    "가격": krw_price, "총가격": krw_price, "판매량": sales,
                     "평점": item_info.get('evaluateRate', 'N/A'),
-                    "이미지": img_url,
-                    "링크": link_url,
-                    "출처": "AliExpress"
+                    "이미지": img_url, "링크": link_url, "출처": "AliExpress"
                 })
         return sorted(상품목록, key=lambda x: x['가격'])
-    except Exception as e:
-        st.error(f"🚨 파이썬 데이터 처리 에러: {str(e)}")
+    except:
         return []
+
 def 출력_통합_결과_레이아웃(검색어):
     with st.spinner(f"'{검색어}' 국내 및 글로벌 최저가 동시 분석 중..."):
-        # 1. 국내 데이터 수집
         n_list = 필터링(네이버검색(검색어).get('items', []))
         d_list = 도매꾹검색(검색어)
         e_list = 검색_11번가(검색어)
 
-        # 2. 글로벌 데이터 수집 (AI 번역 후 호출)
+        en_kw = 검색어
         if RAPID_API_KEY:
             prompt = f"'{검색어}'를 알리익스프레스 검색용 영어 단어로 번역해줘. 설명 없이 영어 단어만 출력해."
             body = {"max_tokens": 50, "messages": [{"role": "user", "content": prompt}]}
-            en_kw = call_claude_api(body)
-            a_list = 검색_글로벌_알리(en_kw if en_kw else 검색어)
+            res_kw = call_claude_api(body)
+            en_kw = res_kw if res_kw else 검색어
+            a_list = 검색_글로벌_알리(en_kw)
         else:
             a_list = []
 
-        # 3. 화면 레이아웃 출력 (4열 배치)
         c1, c2, c3, c4 = st.columns(4)
         platforms = [
             ("🟢 네이버", n_list), 
@@ -280,8 +251,6 @@ def 출력_통합_결과_레이아웃(검색어):
                 if data:
                     best = data[0]
                     sales_info = f"<div style='position:absolute; top:10px; left:10px; background-color:#ff4500; color:white; padding:3px 8px; border-radius:5px; font-weight:bold; font-size:0.8rem;'>판매량 {best['판매량']}+</div>" if '판매량' in best else ""
-                    
-                    # 마크다운 들여쓰기 제거하여 HTML 깨짐 완벽 방지
                     st.markdown(f"""<div class="result-card">
 {sales_info}
 <img src="{best['이미지']}" style="width:100%; border-radius:8px; margin-bottom:15px;">
@@ -290,12 +259,14 @@ def 출력_통합_결과_레이아웃(검색어):
 </div>""", unsafe_allow_html=True)
                     st.link_button("👑 왕의 소싱처로 이동", best['링크'], type="primary")
                 else:
-                    if name == "✈️ 글로벌(알리)" and not RAPID_API_KEY:
-                        st.error("API 키 미설정")
+                    if name == "✈️ 글로벌(알리)":
+                        # API 실패 시 다이렉트 버튼 표시 (플랜B)
+                        st.warning("서버 혼잡 (플랜B 가동)")
+                        ali_url = f"https://ko.aliexpress.com/w/wholesale-{en_kw.replace(' ', '-')}.html"
+                        st.link_button("🚀 알리 다이렉트 검색결과 보기", ali_url, use_container_width=True)
                     else:
                         st.error("결과 없음")
 
-        # 4. 전체 통합 순위 (국내+해외 모두 포함)
         all_combined = n_list[:10] + d_list[:10] + e_list[:10] + a_list[:10]
         combined = sorted(all_combined, key=lambda x: x['총가격'])
         
@@ -308,8 +279,6 @@ def 출력_통합_결과_레이아웃(검색어):
                     with col_img: st.image(item['이미지'], width=100)
                     with col_txt:
                         badge = "✈️ 직구" if item['출처'] == "AliExpress" else "🇰🇷 국내"
-                        
-                        # 마크다운 들여쓰기 제거
                         st.markdown(f"""<div style="margin-bottom:15px;">
 <strong style="color:#ffd700; font-size:1.1rem;">{i}. [{badge} | {item['출처']}]</strong>
 <span style="color:#fff;">{item['제목']}</span><br>
@@ -329,8 +298,7 @@ def send_telegram(text):
 이력파일 = "추천이력.json"
 
 def 이력_로드():
-    if os.path.exists(이력파일):
-        return json.load(open(이력파일, 'r', encoding='utf-8'))
+    if os.path.exists(이력파일): return json.load(open(이력파일, 'r', encoding='utf-8'))
     return {}
 
 def 이력_저장(날짜, 키워드목록):
@@ -342,8 +310,7 @@ def 이력_저장(날짜, 키워드목록):
 def 전체_사용된_키워드():
     data = 이력_로드()
     모든키워드 = []
-    for kw_list in data.values():
-        모든키워드.extend(kw_list)
+    for kw_list in data.values(): 모든키워드.extend(kw_list)
     return set(모든키워드)
 
 # ==========================================
@@ -391,11 +358,8 @@ elif 메뉴 == "📸 이미지로 검색":
     with st.container():
         paste_result = paste_image_button(
             label="📋 캡처한 이미지 바로 붙여넣기 (클릭!)",
-            background_color="#03C75A",
-            hover_background_color="#029f47",
-            text_color="#ffffff"
+            background_color="#03C75A", hover_background_color="#029f47", text_color="#ffffff"
         )
-
         img_bytes = None
 
         if paste_result.image_data is not None:
@@ -433,8 +397,7 @@ elif 메뉴 == "📸 이미지로 검색":
 2. 모르면 네이버/도매꾹 검색용 구체적 명사로 적으세요.
 3. 총 9개 명사형 키워드만 콤마(,)로 구분해서 출력하세요. (설명 없음)"""
                         body = {
-                            "model": "claude-sonnet-4-6",
-                            "max_tokens": 300,
+                            "model": "claude-sonnet-4-6", "max_tokens": 300,
                             "messages": [{"role": "user", "content": [
                                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
                                 {"type": "text", "text": prompt_text}
@@ -489,15 +452,13 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
         
         if col2.button("🌐 검증된 글로벌 최저가 탐색", type="primary", use_container_width=True):
             if global_kw:
-                if not RAPID_API_KEY:
-                    st.error("RapidAPI 키가 설정되지 않았습니다. secrets.toml 파일을 확인해주세요.")
-                    st.stop()
-                    
                 with st.spinner("1. Claude AI가 소싱용 영문 키워드로 번역 중..."):
                     prompt = f"'{global_kw}'를 알리익스프레스 검색용 영어 단어로 번역해줘. 설명 없이 영어 단어만 출력해."
                     body = {"max_tokens": 50, "messages": [{"role": "user", "content": prompt}]}
                     en_kw = call_claude_api(body)
                     en_kw = en_kw if en_kw else global_kw
+                    cn_kw = call_claude_api({"max_tokens": 50, "messages": [{"role": "user", "content": f"'{global_kw}'를 1688 검색용 중국어 간체로 번역해줘. 설명 없이 중국어만 출력해."}]})
+                    cn_kw = cn_kw if cn_kw else global_kw
                 
                 st.success(f"🔤 번역 완료! 타겟 글로벌 키워드: **{en_kw}**")
                 
@@ -509,11 +470,9 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
                 if ali_results:
                     st.markdown(f"### 🏆 '{global_kw}' 글로벌 소싱 최저가 TOP 결과")
                     st.caption("※ 환율 1,500원 기준 임의 계산, 무료배송 & 판매량 50개 이상 상품만 필터링됨")
-                    
                     cols = st.columns(3)
                     for i, item in enumerate(ali_results[:9]):
                         with cols[i % 3]:
-                            # 마크다운 들여쓰기 제거
                             st.markdown(f"""<div class="result-card" style="position:relative; padding-bottom:10px;">
 <div style="position:absolute; top:10px; left:10px; background-color:#ff4500; color:white; padding:3px 8px; border-radius:5px; font-weight:bold; font-size:0.8rem;">판매량 {item['판매량']}+</div>
 <img src="{item['이미지']}" style="width:100%; border-radius:8px; margin-bottom:10px;">
@@ -523,10 +482,24 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
 </div>""", unsafe_allow_html=True)
                             st.link_button("✈️ 상품 바로가기", item['링크'], use_container_width=True)
                 else:
-                    st.error("조건(판매량/무료배송)에 맞는 글로벌 최저가 상품을 찾지 못했거나, API 호출 한도를 초과했습니다.")
+                    # 플랜B: 다이렉트 소싱 버튼 띄우기
+                    st.warning("⚠️ 현재 글로벌 API 무료 서버가 과부하로 응답하지 않습니다. (플랜B 가동)")
+                    st.markdown("### 🔗 AI 번역 기반 다이렉트 소싱")
+                    st.caption("아래 버튼을 클릭하시면 AI가 번역한 키워드로 해당 플랫폼의 검색 결과 창으로 즉시 이동합니다.")
                     
-                st.divider()
-                st.info("💡 **1688 / 타오바오 연결 안내**\n\n현재 화면에 뿌려지는 데이터는 직구/위탁에 가장 유리한 AliExpress 데이터입니다. 1688 도매가 데이터까지 화면에 뿌리려면 RapidAPI에서 '1688 API'를 추가로 구독하여 동일한 방식으로 함수를 연결하시면 됩니다.")
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        st.markdown("""<div style="background-color:rgba(255,102,0,0.1); padding:15px; border-radius:10px; border:1px solid #ff6600; text-align:center;">
+<h4 style="color:#ff6600; margin-top:0;">1688 (도매/사입)</h4></div>""", unsafe_allow_html=True)
+                        st.link_button("🚀 1688 결과 보기", f"https://s.1688.com/selloffer/offer_search.htm?keywords={cn_kw}", use_container_width=True)
+                    with c2:
+                        st.markdown("""<div style="background-color:rgba(255,69,0,0.1); padding:15px; border-radius:10px; border:1px solid #ff4500; text-align:center;">
+<h4 style="color:#ff4500; margin-top:0;">타오바오 (소매)</h4></div>""", unsafe_allow_html=True)
+                        st.link_button("🚀 타오바오 결과 보기", f"https://s.taobao.com/search?q={cn_kw}", use_container_width=True)
+                    with c3:
+                        st.markdown("""<div style="background-color:rgba(229,46,4,0.1); padding:15px; border-radius:10px; border:1px solid #e52e04; text-align:center;">
+<h4 style="color:#e52e04; margin-top:0;">알리익스프레스</h4></div>""", unsafe_allow_html=True)
+                        st.link_button("🚀 알리 결과 보기", f"https://ko.aliexpress.com/w/wholesale-{en_kw.replace(' ', '-')}.html", use_container_width=True)
 
 # ==========================================
 # --- [Menu 5] 상품 등록 도우미 ---
@@ -591,7 +564,6 @@ elif 메뉴 == "💰 마진 계산기":
             total_cost = (buy_p * qty) + ship_p
             fees = {"스마트스토어(6%)": 0.06, "쿠팡(11%)": 0.11, "11번가(13%)": 0.13}
             
-            # 마크다운 들여쓰기 제거
             st.markdown(f"""<div style="padding:15px; background-color:rgba(255,215,0,0.1); border-radius:8px; margin-bottom:20px;">
 <h4 style="color:#ffd700; margin:0;">📦 총 매입 원가: {total_cost:,}원</h4>
 <p style="color:#ccc; margin:5px 0 0 0; font-size:0.9rem;">(단가 {buy_p:,}원 × {qty}개 + 매입 배송비 {ship_p:,}원)</p>
