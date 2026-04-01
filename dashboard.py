@@ -297,8 +297,11 @@ def 전체_사용된_키워드():
 # ==========================================
 st.sidebar.markdown("# 👑 위탁의왕 Ultra")
 st.sidebar.markdown("---")
-메뉴 = st.sidebar.radio("메뉴 선택", ["🏠 홈", "📸 이미지로 검색", "🔎 통합 최저가 검색", "🇨🇳 글로벌 사입/직구 검색", "🏪 상품 등록 도우미", "💰 마진 계산기", "📦 재고/가격 알림", "💎 블루오션 탐지 + 🤖 자동추천"], index=0)
-
+메뉴 = st.sidebar.radio("메뉴 선택", [
+    "🏠 홈", "📸 이미지로 검색", "🔎 통합 최저가 검색", "🇨🇳 글로벌 사입/직구 검색", 
+    "🏪 상품 등록 도우미", "🕵️‍♂️ 경쟁사 리뷰 분석기",  # <-- 이 부분이 추가되었습니다!
+    "💰 마진 계산기", "📦 재고/가격 알림", "💎 블루오션 탐지 + 🤖 자동추천"
+], index=0)
 # ==========================================
 # --- [Menu 1, 2, 3] 생략 (기존 코드와 동일) ---
 # ==========================================
@@ -425,7 +428,65 @@ elif 메뉴 == "🏪 상품 등록 도우미":
             b64 = base64.b64encode(img_bytes).decode("utf-8")
             body = {"max_tokens": 2000, "messages": [{"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}}, {"type": "text", "text": "상세페이지 기획안 작성해줘"}]}]}
             st.write(call_claude_api(body))
+# ==========================================
+# --- [Menu NEW] 경쟁사 리뷰 분석기 ---
+# ==========================================
+elif 메뉴 == "🕵️‍♂️ 경쟁사 리뷰 분석기":
+    st.markdown("<h1>🕵️‍♂️ AI 경쟁사 리뷰 분석기 (Pain Point 스캐너)</h1>", unsafe_allow_html=True)
+    st.caption("경쟁사의 1~3점짜리 악플은 우리에게 황금 같은 매출 소스입니다. 리뷰를 긁어서 붙여넣으면 AI가 상세페이지 공략 포인트를 짜드립니다.")
 
+    with st.container():
+        st.markdown("### 1단계: 경쟁사 리뷰 가져오기")
+        st.info("💡 네이버/쿠팡 등에서 1등으로 잘 팔리는 경쟁사 상품의 '안 좋은 평점(1~3점)' 리뷰 내용들을 마우스로 쭉 드래그해서 복사한 뒤 아래에 붙여넣어 주세요.")
+        
+        # 얼음틀 소싱 사례를 반영한 친숙한 예시 제공
+        reviews_text = st.text_area(
+            "👇 여기에 리뷰를 텍스트로 붙여넣으세요 (여러 개가 섞여 있어도 AI가 알아서 분류합니다)", 
+            height=200, 
+            placeholder="예시:\n얼음틀에서 고무 냄새가 너무 많이 나요.\n뚜껑이 꽉 안 닫혀서 냉동실에 물이 다 샜어요 최악 ㅠㅠ\n얼음 빼낼 때 손가락 부러지는 줄 알았습니다..."
+        )
+
+        if st.button("🔍 AI 결핍 스캔 및 후킹 카피 추출", type="primary", use_container_width=True):
+            if not reviews_text.strip():
+                st.warning("경쟁사 리뷰 내용을 먼저 붙여넣어 주세요!")
+            else:
+                with st.spinner("왕실 카피라이터가 경쟁사의 약점을 철저히 분석하고 있습니다..."):
+                    prompt = f"""당신은 매출을 10배 올려주는 10년 차 탑티어 이커머스 카피라이터입니다.
+아래는 우리 경쟁사 상품에 대한 고객들의 실제 리뷰(주로 불만 사항)입니다. 이 데이터를 철저히 분석하여, 우리가 새로 소싱할 상품의 상세페이지에 쓸 기획안을 작성해주세요.
+
+[경쟁사 리뷰 데이터]
+{reviews_text}
+
+[출력 형식]
+### 🚨 고객들이 분노하는 핵심 결핍 (Pain Point) TOP 3
+(고객이 무엇 때문에 가장 불편해하는지 날카롭게 분석)
+
+### 💡 우리의 완벽한 해결책 (셀링 포인트)
+(위의 결핍을 우리는 어떻게 완벽히 해결했는지 당당하게 어필하는 소구점)
+
+### 🎣 상세페이지 최상단 강력한 후킹 카피 3선
+(고객이 상세페이지에 들어오자마자 '아 이건 내 얘기다!' 하고 스크롤을 내릴 수밖에 없는 도발적이고 공감 가는 카피)
+"""
+                    body = {
+                        "max_tokens": 1500,
+                        "messages": [{"role": "user", "content": prompt}]
+                    }
+                    result = call_claude_api(body)
+
+                    if result:
+                        st.divider()
+                        st.markdown("## 🎯 AI 분석 및 카피라이팅 결과")
+                        
+                        st.markdown(f"""
+                        <div style="background-color:rgba(3, 199, 90, 0.05); padding:20px; border-radius:10px; border:1px solid rgba(3, 199, 90, 0.2);">
+                            {result}
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        st.divider()
+                        st.text_area("📋 복사하기 (Ctrl+A → Ctrl+C)", value=result, height=200)
+                    else:
+                        st.error("AI 분석 중 오류가 발생했습니다. 다시 시도해주세요.")
 elif 메뉴 == "💰 마진 계산기":
     st.markdown("<h1>💰 스마트 묶음 마진 계산기</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns(3)
