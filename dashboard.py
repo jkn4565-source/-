@@ -477,11 +477,8 @@ elif 메뉴 == "🕵️‍♂️ 경쟁사 리뷰 분석기":
                         st.divider()
                         st.markdown("## 🎯 AI 분석 및 카피라이팅 결과")
                         
-                        st.markdown(f"""
-                        <div style="background-color:rgba(3, 199, 90, 0.05); padding:20px; border-radius:10px; border:1px solid rgba(3, 199, 90, 0.2);">
-                            {result}
-                        </div>
-                        """, unsafe_allow_html=True)
+                        # HTML 강제 박스를 없애고 순정 마크다운으로 안전하게 출력합니다.
+                        st.markdown(result)
                         
                         st.divider()
                         st.text_area("📋 복사하기 (Ctrl+A → Ctrl+C)", value=result, height=200)
