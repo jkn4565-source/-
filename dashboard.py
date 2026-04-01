@@ -244,7 +244,7 @@ def 전체_사용된_키워드():
 st.sidebar.markdown("# 👑 위탁의왕 Ultra")
 st.sidebar.markdown("---")
 메뉴 = st.sidebar.radio("메뉴 선택", [
-    "🏠 홈", "📸 이미지로 검색", "🔎 통합 최저가 검색", "🏪 상품 등록 도우미",
+    "🏠 홈", "📸 이미지로 검색", "🔎 통합 최저가 검색", "🇨🇳 글로벌 사입/직구 검색", "🏪 상품 등록 도우미",
     "💰 마진 계산기", "📦 재고/가격 알림", "💎 블루오션 탐지 + 🤖 자동추천"
 ], index=0)
 
@@ -367,7 +367,79 @@ elif 메뉴 == "🔎 통합 최저가 검색":
         text_kw = st.text_input("사냥할 상품명을 입력하세요", placeholder="예: 무선 가습기", key="input_text_kw")
         if st.button("🚀 왕의 명령: 실시간 통합 비교 시작", type="primary", use_container_width=True, key="btn_text_search"):
             if text_kw: 출력_통합_결과_레이아웃(text_kw)
+# ==========================================
+# --- [Menu 3-1] 글로벌 사입/직구 검색 ---
+# ==========================================
+elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
+    st.markdown("<h1>🇨🇳 글로벌 사입/직구 소싱 (1688/알리/타오바오)</h1>", unsafe_allow_html=True)
+    st.caption("국내 플랫폼과 분리하여 중국 현지 단가를 집중 분석합니다. 한글로 입력하면 AI가 최적의 중국어/영어로 번역해 소싱처를 찾아줍니다.")
 
+    with st.container():
+        col1, col2 = st.columns([3, 1])
+        global_kw = col1.text_input("사냥할 상품명을 입력하세요 (한글)", placeholder="예: 실리콘 얼음틀, 내열 유리컵", key="global_kw")
+        
+        if col2.button("🌐 글로벌 소싱처 탐색", type="primary", use_container_width=True):
+            if global_kw:
+                with st.spinner("Claude AI가 검색어를 글로벌 소싱용으로 최적화 번역 중입니다..."):
+                    # Claude를 이용한 키워드 번역 (영어/중국어)
+                    prompt = f"'{global_kw}'를 알리익스프레스 검색용 영어 키워드와 1688/타오바오 검색용 중국어(간체) 키워드로 번역해줘. 반드시 JSON 형식으로만 대답해. 예시: {{\"english\": \"silicone ice tray\", \"chinese\": \"硅胶冰格\"}}"
+                    body = {
+                        "max_tokens": 100, 
+                        "messages": [{"role": "user", "content": prompt}]
+                    }
+                    trans_res = call_claude_api(body)
+                    
+                    try:
+                        # JSON 파싱
+                        clean_res = trans_res.replace("```json", "").replace("```", "").strip()
+                        trans_dict = json.loads(clean_res)
+                        en_kw = trans_dict.get('english', global_kw)
+                        cn_kw = trans_dict.get('chinese', global_kw)
+                    except:
+                        en_kw = global_kw
+                        cn_kw = global_kw
+                        st.warning("AI 번역에 문제가 발생하여 원본 검색어로 진행합니다.")
+
+                st.success(f"🔤 **번역 완료!** 알리(영어): **{en_kw}** / 1688(중국어): **{cn_kw}**")
+                st.divider()
+
+                # 각 플랫폼별 다이렉트 검색 링크 생성
+                ali_url = f"https://ko.aliexpress.com/w/wholesale-{en_kw.replace(' ', '-')}.html"
+                c1688_url = f"https://s.1688.com/selloffer/offer_search.htm?keywords={cn_kw}"
+                taobao_url = f"https://s.taobao.com/search?q={cn_kw}"
+
+                st.markdown("### 🔗 플랫폼별 원클릭 다이렉트 소싱")
+                c1, c2, c3 = st.columns(3)
+                
+                with c1:
+                    st.markdown("""
+                    <div style="background-color:rgba(255,102,0,0.1); padding:20px; border-radius:10px; border:1px solid #ff6600; text-align:center;">
+                        <h3 style="color:#ff6600; margin-top:0;">1688 (도매/사입)</h3>
+                        <p style="font-size:0.9rem;">중국 내수용 도매 최저가. 배대지 연동 대량 사입에 최적화.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.link_button("🚀 1688 결과 바로가기", c1688_url, use_container_width=True)
+
+                with c2:
+                    st.markdown("""
+                    <div style="background-color:rgba(255,69,0,0.1); padding:20px; border-radius:10px; border:1px solid #ff4500; text-align:center;">
+                        <h3 style="color:#ff4500; margin-top:0;">타오바오 (소매)</h3>
+                        <p style="font-size:0.9rem;">트렌디한 소매 상품. 소량 사입이나 상세페이지용 이미지 소싱에 적합.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.link_button("🚀 타오바오 결과 바로가기", taobao_url, use_container_width=True)
+
+                with c3:
+                    st.markdown("""
+                    <div style="background-color:rgba(229,46,4,0.1); padding:20px; border-radius:10px; border:1px solid #e52e04; text-align:center;">
+                        <h3 style="color:#e52e04; margin-top:0;">알리익스프레스</h3>
+                        <p style="font-size:0.9rem;">글로벌 직구용. 배대지 없이 고객에게 바로 쏘는 무재고 위탁에 적합.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.link_button("🚀 알리익스프레스 바로가기", ali_url, use_container_width=True)
+                    
+                st.divider()
+                st.info("💡 **API 데이터 연동 안내:** 1688과 타오바오는 자체 보안상 파이썬의 단순 스크래핑(크롤링)을 엄격히 차단하고 있습니다. 향후 상품 리스트와 가격표를 대시보드 안으로 직접 불러오시려면, RapidAPI 같은 곳에서 'Taobao/1688 API'를 연동하셔야 합니다. 현재는 한글 검색어만 치면 번역부터 검색까지 한 번에 띄워주는 다이렉트 소싱 엔진으로 세팅해 두었습니다.")
 # ==========================================
 # --- [Menu 4] 상품 등록 도우미 ---
 # ==========================================
