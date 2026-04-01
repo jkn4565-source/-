@@ -169,34 +169,47 @@ def 검색_11번가(검색어, 개수=20):
     except: return []
 
 def 검색_글로벌_알리(검색어, 개수=20):
-    # API 개발자가 기존 주소를 날려버렸으므로, 최신 버전인 item_search_2 주소로 찌릅니다.
-    url = "https://aliexpress-datahub.p.rapidapi.com/item_search_2"
-    querystring = {"q": 검색어, "page": "1"}
+    import time # 쿨타임을 주기 위한 모듈 추가
     
+    # 개발자가 뚫어놓은 예비 서버들 4개를 모두 준비합니다.
+    endpoints = [
+        "https://aliexpress-datahub.p.rapidapi.com/item_search_2",
+        "https://aliexpress-datahub.p.rapidapi.com/item_search_3",
+        "https://aliexpress-datahub.p.rapidapi.com/item_search_4",
+        "https://aliexpress-datahub.p.rapidapi.com/item_search_5"
+    ]
+    querystring = {"q": 검색어, "page": "1"}
     headers = {
         "x-rapidapi-key": RAPID_API_KEY.strip(),
-        "x-rapidapi-host": "aliexpress-datahub.p.rapidapi.com",
-        "Content-Type": "application/json"
+        "x-rapidapi-host": "aliexpress-datahub.p.rapidapi.com"
     }
     
-    try:
-        response = requests.get(url, headers=headers, params=querystring, timeout=15)
-        
-        # 만약 2번 서버도 불안정하면 3번 서버로 자동 우회 (무적 방어막)
-        if response.status_code == 403 or response.status_code == 404:
-            url_fallback = "https://aliexpress-datahub.p.rapidapi.com/item_search_3"
-            response = requests.get(url_fallback, headers=headers, params=querystring, timeout=15)
-
-        # 그래도 에러가 나면 화면에 띄움
-        if response.status_code != 200:
-            st.warning(f"⚠️ RapidAPI 연결 에러 (코드 {response.status_code}): {response.text}")
-            return []
+    response = None
+    # 4개의 서버를 순서대로 하나씩 찔러봅니다.
+    for url in endpoints:
+        try:
+            response = requests.get(url, headers=headers, params=querystring, timeout=10)
             
-        data = response.json()
+            # 200(성공)이 뜨면 즉시 반복문을 멈추고 데이터를 가져옵니다!
+            if response.status_code == 200:
+                break 
+                
+            # 429(한도초과)나 에러가 뜨면 1.5초 쉬었다가 다음 예비 서버로 넘어갑니다.
+            time.sleep(1.5) 
+        except:
+            time.sleep(1.5)
+            continue
+
+    # 4개 서버를 다 돌았는데도 실패하면 안내 메시지 출력
+    if not response or response.status_code != 200:
+        st.warning(f"⚠️ 현재 알리 API 서버들 모두 혼잡 상태입니다 (코드 {response.status_code if response else '알수없음'}). 1분 뒤 다시 시도해주세요.")
+        return []
         
+    try:
+        data = response.json()
         상품목록 = []
-        # JSON 데이터 구조가 서버마다 조금씩 다를 수 있어 안전하게 파싱
         items_data = []
+        
         if 'result' in data:
             if 'resultList' in data['result']:
                 items_data = data['result']['resultList']
@@ -207,14 +220,12 @@ def 검색_글로벌_알리(검색어, 개수=20):
             item_info = item.get('item', {})
             delivery = item.get('delivery', {})
             
-            # 할인 가격이 없으면 일반 가격으로 계산
             usd_price = float(item_info.get('sku', {}).get('def', {}).get('promotionPrice', item_info.get('sku', {}).get('def', {}).get('price', 0)))
             krw_price = int(usd_price * 1500)
             
             sales = int(item_info.get('sales', 0))
             free_shipping = delivery.get('freeShipping', False)
             
-            # 테스트를 위해 판매량 조건 임시 해제 (모든 상품 통과)
             if sales >= 0: 
                 img_url = item_info.get('image', '')
                 if img_url and not img_url.startswith('http'):
@@ -236,13 +247,7 @@ def 검색_글로벌_알리(검색어, 개수=20):
                 })
         return sorted(상품목록, key=lambda x: x['가격'])
     except Exception as e:
-        st.error(f"🚨 파이썬 파싱 에러: {str(e)}")
-        return []
-    except Exception as e:
-        st.error(f"🚨 파이썬 실행 에러: {str(e)}")
-        return []
-    except Exception as e:
-        st.error(f"🚨 코드 처리 중 에러 발생: {str(e)}")
+        st.error(f"🚨 파이썬 데이터 처리 에러: {str(e)}")
         return []
 def 출력_통합_결과_레이아웃(검색어):
     with st.spinner(f"'{검색어}' 국내 및 글로벌 최저가 동시 분석 중..."):
