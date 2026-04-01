@@ -21,7 +21,7 @@ try:
     CLAUDE_API_KEY = st.secrets["CLAUDE_API_KEY"]
     TELEGRAM_BOT_TOKEN = st.secrets["TELEGRAM_BOT_TOKEN"]
     TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
-    RAPID_API_KEY = st.secrets.get("RAPID_API_KEY", "") # 글로벌 소싱용 추가
+    RAPID_API_KEY = "37dfed8d6bmsh954db7976336c3cp1daa5fjsnl7b55e064fed"
 except KeyError as e:
     st.error(f"시크릿 키 설정 오류: {e}")
     st.stop()
