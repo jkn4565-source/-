@@ -169,11 +169,10 @@ def 검색_11번가(검색어, 개수=20):
     except: return []
 
 def 검색_글로벌_알리(검색어, 개수=20):
-    url = "https://aliexpress-datahub.p.rapidapi.com/item_search"
-    # 옵션을 가장 안전한 default(기본값)로 변경하여 튕겨냄 방지
-    querystring = {"q": 검색어, "page": "1", "sort": "default"}
+    # API 개발자가 기존 주소를 날려버렸으므로, 최신 버전인 item_search_2 주소로 찌릅니다.
+    url = "https://aliexpress-datahub.p.rapidapi.com/item_search_2"
+    querystring = {"q": 검색어, "page": "1"}
     
-    # 헤더의 대소문자를 RapidAPI 표준과 100% 맞추고, 혹시 모를 공백(strip) 제거
     headers = {
         "x-rapidapi-key": RAPID_API_KEY.strip(),
         "x-rapidapi-host": "aliexpress-datahub.p.rapidapi.com",
@@ -183,7 +182,12 @@ def 검색_글로벌_알리(검색어, 개수=20):
     try:
         response = requests.get(url, headers=headers, params=querystring, timeout=15)
         
-        # 에러가 나면 숨기지 않고 무조건 띄우기
+        # 만약 2번 서버도 불안정하면 3번 서버로 자동 우회 (무적 방어막)
+        if response.status_code == 403 or response.status_code == 404:
+            url_fallback = "https://aliexpress-datahub.p.rapidapi.com/item_search_3"
+            response = requests.get(url_fallback, headers=headers, params=querystring, timeout=15)
+
+        # 그래도 에러가 나면 화면에 띄움
         if response.status_code != 200:
             st.warning(f"⚠️ RapidAPI 연결 에러 (코드 {response.status_code}): {response.text}")
             return []
@@ -191,30 +195,49 @@ def 검색_글로벌_알리(검색어, 개수=20):
         data = response.json()
         
         상품목록 = []
-        if 'result' in data and 'resultList' in data['result']:
-            for item in data['result']['resultList']:
-                item_info = item.get('item', {})
-                delivery = item.get('delivery', {})
-                
-                usd_price = float(item_info.get('sku', {}).get('def', {}).get('promotionPrice', 0))
-                krw_price = int(usd_price * 1500)
-                
-                sales = int(item_info.get('sales', 0))
-                free_shipping = delivery.get('freeShipping', False)
-                
-                # 🚨 테스트를 위해 '판매량' 필터링 임시 해제 (모든 상품 통과)
-                if sales >= 0: 
-                    상품목록.append({
-                        "제목": item_info.get('title', ''),
-                        "가격": krw_price,
-                        "총가격": krw_price,
-                        "판매량": sales,
-                        "평점": item_info.get('evaluateRate', 'N/A'),
-                        "이미지": "https:" + item_info.get('image', ''),
-                        "링크": "https:" + item_info.get('itemUrl', ''),
-                        "출처": "AliExpress"
-                    })
+        # JSON 데이터 구조가 서버마다 조금씩 다를 수 있어 안전하게 파싱
+        items_data = []
+        if 'result' in data:
+            if 'resultList' in data['result']:
+                items_data = data['result']['resultList']
+            elif isinstance(data['result'], list):
+                items_data = data['result']
+
+        for item in items_data:
+            item_info = item.get('item', {})
+            delivery = item.get('delivery', {})
+            
+            # 할인 가격이 없으면 일반 가격으로 계산
+            usd_price = float(item_info.get('sku', {}).get('def', {}).get('promotionPrice', item_info.get('sku', {}).get('def', {}).get('price', 0)))
+            krw_price = int(usd_price * 1500)
+            
+            sales = int(item_info.get('sales', 0))
+            free_shipping = delivery.get('freeShipping', False)
+            
+            # 테스트를 위해 판매량 조건 임시 해제 (모든 상품 통과)
+            if sales >= 0: 
+                img_url = item_info.get('image', '')
+                if img_url and not img_url.startswith('http'):
+                    img_url = "https:" + img_url
+
+                link_url = item_info.get('itemUrl', '')
+                if link_url and not link_url.startswith('http'):
+                    link_url = "https:" + link_url
+
+                상품목록.append({
+                    "제목": item_info.get('title', ''),
+                    "가격": krw_price,
+                    "총가격": krw_price,
+                    "판매량": sales,
+                    "평점": item_info.get('evaluateRate', 'N/A'),
+                    "이미지": img_url,
+                    "링크": link_url,
+                    "출처": "AliExpress"
+                })
         return sorted(상품목록, key=lambda x: x['가격'])
+    except Exception as e:
+        st.error(f"🚨 파이썬 파싱 에러: {str(e)}")
+        return []
     except Exception as e:
         st.error(f"🚨 파이썬 실행 에러: {str(e)}")
         return []
