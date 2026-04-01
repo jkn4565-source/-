@@ -170,17 +170,20 @@ def 검색_11번가(검색어, 개수=20):
 
 def 검색_글로벌_알리(검색어, 개수=20):
     url = "https://aliexpress-datahub.p.rapidapi.com/item_search"
-    querystring = {"q": 검색어, "page": "1", "sort": "priceAsc"}
+    # 옵션을 가장 안전한 default(기본값)로 변경하여 튕겨냄 방지
+    querystring = {"q": 검색어, "page": "1", "sort": "default"}
     
+    # 헤더의 대소문자를 RapidAPI 표준과 100% 맞추고, 혹시 모를 공백(strip) 제거
     headers = {
-        "X-RapidAPI-Key": RAPID_API_KEY,
-        "X-RapidAPI-Host": "aliexpress-datahub.p.rapidapi.com"
+        "x-rapidapi-key": RAPID_API_KEY.strip(),
+        "x-rapidapi-host": "aliexpress-datahub.p.rapidapi.com",
+        "Content-Type": "application/json"
     }
     
     try:
         response = requests.get(url, headers=headers, params=querystring, timeout=15)
         
-        # 🚨 [디버깅 추가] 응답 코드가 200(정상)이 아니면 화면에 에러 이유를 직접 띄웁니다!
+        # 에러가 나면 숨기지 않고 무조건 띄우기
         if response.status_code != 200:
             st.warning(f"⚠️ RapidAPI 연결 에러 (코드 {response.status_code}): {response.text}")
             return []
@@ -199,7 +202,7 @@ def 검색_글로벌_알리(검색어, 개수=20):
                 sales = int(item_info.get('sales', 0))
                 free_shipping = delivery.get('freeShipping', False)
                 
-                # 🚨 [조건 임시 해제] 테스트를 위해 무료배송 조건 해제 & 판매량 0개 이상(전체)로 변경
+                # 🚨 테스트를 위해 '판매량' 필터링 임시 해제 (모든 상품 통과)
                 if sales >= 0: 
                     상품목록.append({
                         "제목": item_info.get('title', ''),
@@ -212,6 +215,9 @@ def 검색_글로벌_알리(검색어, 개수=20):
                         "출처": "AliExpress"
                     })
         return sorted(상품목록, key=lambda x: x['가격'])
+    except Exception as e:
+        st.error(f"🚨 파이썬 실행 에러: {str(e)}")
+        return []
     except Exception as e:
         st.error(f"🚨 코드 처리 중 에러 발생: {str(e)}")
         return []
