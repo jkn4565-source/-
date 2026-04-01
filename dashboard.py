@@ -624,26 +624,48 @@ elif 메뉴 == "🏪 상품 등록 도우미":
         link_col3.link_button("🔵 11번가 상품등록", "https://soffice.11st.co.kr/", use_container_width=True)
 
 # ==========================================
-# --- [Menu 5] 마진 계산기 ---
+# --- [Menu 5] 마진 계산기 (수량 추가 버전) ---
 # ==========================================
 elif 메뉴 == "💰 마진 계산기":
-    st.markdown("<h1>💰 스마트 마진 계산기</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>💰 스마트 묶음 마진 계산기</h1>", unsafe_allow_html=True)
+    
     with st.container():
-        col1, col2 = st.columns(2)
-        buy_p = col1.number_input("도매가(매입가)", value=10000, key="buy_p")
-        ship_p = col1.number_input("매입 배송비", value=3000, key="ship_p")
-        target_m = col2.number_input("목표 마진율 (%)", value=30, key="target_m")
-        if st.button("🎯 플랫폼별 추천 판매가 계산", type="primary", use_container_width=True):
+        # 수량 입력칸을 위해 3열로 분할
+        col1, col2, col3 = st.columns(3)
+        buy_p = col1.number_input("단품 도매가(매입가)", value=10000, step=100, key="buy_p")
+        qty = col2.number_input("판매 수량 (묶음 단위)", min_value=1, value=1, step=1, key="qty")
+        ship_p = col3.number_input("건당 매입 배송비", value=3000, step=100, key="ship_p")
+        
+        st.divider()
+        
+        # 마진율은 슬라이더로 조절하면 UI가 더 고급스러워집니다.
+        target_m = st.slider("🎯 목표 마진율 (%)", min_value=5, max_value=80, value=30, step=1, key="target_m")
+        
+        if st.button("🚀 플랫폼별 추천 묶음 판매가 계산", type="primary", use_container_width=True):
+            # 총 매입 원가 = (단품 도매가 * 수량) + 1건의 배송비
+            total_cost = (buy_p * qty) + ship_p
             fees = {"스마트스토어(6%)": 0.06, "쿠팡(11%)": 0.11, "11번가(13%)": 0.13}
-            st.divider()
+            
+            st.markdown(f"""
+            <div style="padding:15px; background-color:rgba(255,215,0,0.1); border-radius:8px; margin-bottom:20px;">
+                <h4 style="color:#ffd700; margin:0;">📦 총 매입 원가: {total_cost:,}원</h4>
+                <p style="color:#ccc; margin:5px 0 0 0; font-size:0.9rem;">(단가 {buy_p:,}원 × {qty}개 + 매입 배송비 {ship_p:,}원)</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
             f_cols = st.columns(3)
             for i, (name, fee) in enumerate(fees.items()):
-                rec = (buy_p + ship_p) / (1 - fee - 0.036 - (target_m / 100))
+                # 추천 판매가 = 총 매입 원가 / (1 - 마켓수수료 - PG결제수수료(3.6%) - 목표마진율)
+                rec = total_cost / (1 - fee - 0.036 - (target_m / 100))
+                expected_margin = rec * (target_m / 100)
+                
                 with f_cols[i]:
-                    st.success(f"{name}")
-                    st.metric("판매가", f"{int(rec):,}원")
-                    st.write(f"예상마진: {int(rec * (target_m / 100)):,}원")
-
+                    st.success(f"🛒 {name}")
+                    st.metric("추천 묶음 판매가", f"{int(rec):,}원")
+                    st.write(f"💵 총 마진액: **{int(expected_margin):,}원**")
+                    # 수량이 2개 이상일 때 개당 마진도 보여주면 분석하기 좋습니다.
+                    if qty > 1:
+                        st.caption(f"👉 1개당 마진: {int(expected_margin / qty):,}원")
 # ==========================================
 # --- [Menu 6] 재고/가격 알림 ---
 # ==========================================
