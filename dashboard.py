@@ -179,6 +179,12 @@ def 검색_글로벌_알리(검색어, 개수=20):
     
     try:
         response = requests.get(url, headers=headers, params=querystring, timeout=15)
+        
+        # 🚨 [디버깅 추가] 응답 코드가 200(정상)이 아니면 화면에 에러 이유를 직접 띄웁니다!
+        if response.status_code != 200:
+            st.warning(f"⚠️ RapidAPI 연결 에러 (코드 {response.status_code}): {response.text}")
+            return []
+            
         data = response.json()
         
         상품목록 = []
@@ -188,13 +194,13 @@ def 검색_글로벌_알리(검색어, 개수=20):
                 delivery = item.get('delivery', {})
                 
                 usd_price = float(item_info.get('sku', {}).get('def', {}).get('promotionPrice', 0))
-                # 환율 1500원으로 계산 적용
                 krw_price = int(usd_price * 1500)
                 
                 sales = int(item_info.get('sales', 0))
                 free_shipping = delivery.get('freeShipping', False)
                 
-                if sales >= 50 and free_shipping:
+                # 🚨 [조건 임시 해제] 테스트를 위해 무료배송 조건 해제 & 판매량 0개 이상(전체)로 변경
+                if sales >= 0: 
                     상품목록.append({
                         "제목": item_info.get('title', ''),
                         "가격": krw_price,
@@ -207,8 +213,8 @@ def 검색_글로벌_알리(검색어, 개수=20):
                     })
         return sorted(상품목록, key=lambda x: x['가격'])
     except Exception as e:
+        st.error(f"🚨 코드 처리 중 에러 발생: {str(e)}")
         return []
-
 def 출력_통합_결과_레이아웃(검색어):
     with st.spinner(f"'{검색어}' 국내 및 글로벌 최저가 동시 분석 중..."):
         # 1. 국내 데이터 수집
