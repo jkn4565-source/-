@@ -188,7 +188,8 @@ def 검색_글로벌_알리(검색어, 개수=20):
                 delivery = item.get('delivery', {})
                 
                 usd_price = float(item_info.get('sku', {}).get('def', {}).get('promotionPrice', 0))
-                krw_price = int(usd_price * 1350)
+                # 환율 1500원으로 계산 적용
+                krw_price = int(usd_price * 1500)
                 
                 sales = int(item_info.get('sales', 0))
                 free_shipping = delivery.get('freeShipping', False)
@@ -197,7 +198,7 @@ def 검색_글로벌_알리(검색어, 개수=20):
                     상품목록.append({
                         "제목": item_info.get('title', ''),
                         "가격": krw_price,
-                        "총가격": krw_price,  # 레이아웃 정렬을 위한 키 추가
+                        "총가격": krw_price,
                         "판매량": sales,
                         "평점": item_info.get('evaluateRate', 'N/A'),
                         "이미지": "https:" + item_info.get('image', ''),
@@ -240,14 +241,13 @@ def 출력_통합_결과_레이아웃(검색어):
                     best = data[0]
                     sales_info = f"<div style='position:absolute; top:10px; left:10px; background-color:#ff4500; color:white; padding:3px 8px; border-radius:5px; font-weight:bold; font-size:0.8rem;'>판매량 {best['판매량']}+</div>" if '판매량' in best else ""
                     
-                    st.markdown(f"""
-                    <div class="result-card">
-                        {sales_info}
-                        <img src="{best['이미지']}" style="width:100%; border-radius:8px; margin-bottom:15px;">
-                        <h4 style="color:#ffd700; margin:0;">{best.get('총가격', best.get('가격')):,}원</h4>
-                        <p style="color:#ccc; font-size:0.8rem; margin:5px 0 15px 0; height:40px; overflow:hidden;">{best['제목'][:40]}...</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    # 마크다운 들여쓰기 제거하여 HTML 깨짐 완벽 방지
+                    st.markdown(f"""<div class="result-card">
+{sales_info}
+<img src="{best['이미지']}" style="width:100%; border-radius:8px; margin-bottom:15px;">
+<h4 style="color:#ffd700; margin:0;">{best.get('총가격', best.get('가격')):,}원</h4>
+<p style="color:#ccc; font-size:0.8rem; margin:5px 0 15px 0; height:40px; overflow:hidden;">{best['제목'][:40]}...</p>
+</div>""", unsafe_allow_html=True)
                     st.link_button("👑 왕의 소싱처로 이동", best['링크'], type="primary")
                 else:
                     if name == "✈️ 글로벌(알리)" and not RAPID_API_KEY:
@@ -268,13 +268,13 @@ def 출력_통합_결과_레이아웃(검색어):
                     with col_img: st.image(item['이미지'], width=100)
                     with col_txt:
                         badge = "✈️ 직구" if item['출처'] == "AliExpress" else "🇰🇷 국내"
-                        st.markdown(f"""
-                        <div style="margin-bottom:15px;">
-                            <strong style="color:#ffd700; font-size:1.1rem;">{i}. [{badge} | {item['출처']}]</strong>
-                            <span style="color:#fff;">{item['제목']}</span><br>
-                            <span style="color:#03C75A; font-weight:bold; font-size:1.2rem;">{item['총가격']:,}원</span>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        
+                        # 마크다운 들여쓰기 제거
+                        st.markdown(f"""<div style="margin-bottom:15px;">
+<strong style="color:#ffd700; font-size:1.1rem;">{i}. [{badge} | {item['출처']}]</strong>
+<span style="color:#fff;">{item['제목']}</span><br>
+<span style="color:#03C75A; font-weight:bold; font-size:1.2rem;">{item['총가격']:,}원</span>
+</div>""", unsafe_allow_html=True)
                     with col_btn: st.link_button("구매하러 가기", item['링크'])
 
 def send_telegram(text):
@@ -468,22 +468,19 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
                 
                 if ali_results:
                     st.markdown(f"### 🏆 '{global_kw}' 글로벌 소싱 최저가 TOP 결과")
-                    st.caption("※ 환율 1,350원 기준 임의 계산, 무료배송 & 판매량 50개 이상 상품만 필터링됨")
+                    st.caption("※ 환율 1,500원 기준 임의 계산, 무료배송 & 판매량 50개 이상 상품만 필터링됨")
                     
                     cols = st.columns(3)
                     for i, item in enumerate(ali_results[:9]):
                         with cols[i % 3]:
-                            st.markdown(f"""
-                            <div class="result-card" style="position:relative; padding-bottom:10px;">
-                                <div style="position:absolute; top:10px; left:10px; background-color:#ff4500; color:white; padding:3px 8px; border-radius:5px; font-weight:bold; font-size:0.8rem;">
-                                    판매량 {item['판매량']}+
-                                </div>
-                                <img src="{item['이미지']}" style="width:100%; border-radius:8px; margin-bottom:10px;">
-                                <h3 style="color:#03C75A; margin:0;">{item['가격']:,}원</h3>
-                                <div style="color:#ffd700; font-size:0.9rem; margin-bottom:10px;">⭐ 평점: {item['평점']}</div>
-                                <p style="color:#ccc; font-size:0.8rem; height:40px; overflow:hidden;">{item['제목'][:50]}...</p>
-                            </div>
-                            """, unsafe_allow_html=True)
+                            # 마크다운 들여쓰기 제거
+                            st.markdown(f"""<div class="result-card" style="position:relative; padding-bottom:10px;">
+<div style="position:absolute; top:10px; left:10px; background-color:#ff4500; color:white; padding:3px 8px; border-radius:5px; font-weight:bold; font-size:0.8rem;">판매량 {item['판매량']}+</div>
+<img src="{item['이미지']}" style="width:100%; border-radius:8px; margin-bottom:10px;">
+<h3 style="color:#03C75A; margin:0;">{item['가격']:,}원</h3>
+<div style="color:#ffd700; font-size:0.9rem; margin-bottom:10px;">⭐ 평점: {item['평점']}</div>
+<p style="color:#ccc; font-size:0.8rem; height:40px; overflow:hidden;">{item['제목'][:50]}...</p>
+</div>""", unsafe_allow_html=True)
                             st.link_button("✈️ 상품 바로가기", item['링크'], use_container_width=True)
                 else:
                     st.error("조건(판매량/무료배송)에 맞는 글로벌 최저가 상품을 찾지 못했거나, API 호출 한도를 초과했습니다.")
@@ -554,12 +551,11 @@ elif 메뉴 == "💰 마진 계산기":
             total_cost = (buy_p * qty) + ship_p
             fees = {"스마트스토어(6%)": 0.06, "쿠팡(11%)": 0.11, "11번가(13%)": 0.13}
             
-            st.markdown(f"""
-            <div style="padding:15px; background-color:rgba(255,215,0,0.1); border-radius:8px; margin-bottom:20px;">
-                <h4 style="color:#ffd700; margin:0;">📦 총 매입 원가: {total_cost:,}원</h4>
-                <p style="color:#ccc; margin:5px 0 0 0; font-size:0.9rem;">(단가 {buy_p:,}원 × {qty}개 + 매입 배송비 {ship_p:,}원)</p>
-            </div>
-            """, unsafe_allow_html=True)
+            # 마크다운 들여쓰기 제거
+            st.markdown(f"""<div style="padding:15px; background-color:rgba(255,215,0,0.1); border-radius:8px; margin-bottom:20px;">
+<h4 style="color:#ffd700; margin:0;">📦 총 매입 원가: {total_cost:,}원</h4>
+<p style="color:#ccc; margin:5px 0 0 0; font-size:0.9rem;">(단가 {buy_p:,}원 × {qty}개 + 매입 배송비 {ship_p:,}원)</p>
+</div>""", unsafe_allow_html=True)
             
             f_cols = st.columns(3)
             for i, (name, fee) in enumerate(fees.items()):
