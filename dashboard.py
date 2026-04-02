@@ -313,7 +313,7 @@ st.sidebar.markdown("---")
 # --- [Menu 1] 홈 ---
 # ==========================================
 if 메뉴 == "🏠 홈":
-    st.markdown("<h1>👑 위탁의왕 자동화 대시보드 v6.5 (Mobile Ready)</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>👑 위탁의왕 자동화 대시보드 v6.6 Ultra Final</h1>", unsafe_allow_html=True)
     st.caption(f"📅 오늘 날짜: {datetime.now().strftime('%Y-%m-%d')} | 대표님, 오늘도 위탁 시장의 왕이 되어보시죠!")
     st.divider()
 
@@ -516,7 +516,6 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
             pil_image.save(buffered, format="JPEG")
             g_img_bytes = buffered.getvalue()
 
-        # 🚨 [추가됨] 모바일/태블릿용 폴더 업로드 기능 장착
         st.write("---")
         with st.expander("📱 내 앨범/폴더에서 사진 선택하기 (모바일/스마트폰용)", expanded=True):
             up_file_g = st.file_uploader("사진 파일 첨부", type=['jpg', 'jpeg', 'png'], key="up_g_bridge")
@@ -560,10 +559,14 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
                 with cc3:
                     st.link_button("✈️ 알리 켜기", "https://ko.aliexpress.com", use_container_width=True)
                 
+                # 🚨 [복구됨] AI 키워드 추출 및 다이렉트 링크 파싱 연결
                 if st.button("🤖 AI 현지어 타겟 키워드 동시 추출", type="primary", use_container_width=True):
                     with st.spinner("AI가 이미지에서 핵심 키워드를 스캔 중입니다..."):
                         b64_g = base64.b64encode(g_img_bytes).decode("utf-8")
-                        prompt = "이 이미지 속 상품을 글로벌 도매 시장에서 찾기 위한 가장 정확한 중국어 간체 키워드와 영어 키워드를 각각 한 줄씩 뽑아줘."
+                        prompt = """이 이미지 속 상품을 글로벌 도매 시장에서 찾기 위한 가장 정확한 중국어 간체 명사형 키워드와 영어 키워드를 각각 한 줄씩 뽑아줘.
+출력형식:
+중국어: [중국어 간체 키워드]
+영어: [영어 키워드]"""
                         res = call_claude_api({
                             "model": "claude-sonnet-4-6", "max_tokens": 100,
                             "messages": [{"role": "user", "content": [
@@ -571,8 +574,25 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
                                 {"type": "text", "text": prompt}
                             ]}]
                         })
-                        st.success("✅ AI 키워드 추출 완료!")
-                        st.code(res)
+                        
+                        if res:
+                            st.success("✅ AI 키워드 추출 완료!")
+                            st.code(res)
+                            
+                            # 파싱(Parsing) 로직으로 중국어/영어 키워드 분리
+                            cn_kw_ai = "상품"
+                            en_kw_ai = "item"
+                            try:
+                                for line in res.split('\n'):
+                                    if '중국어:' in line: cn_kw_ai = line.split('중국어:')[1].strip()
+                                    if '영어:' in line: en_kw_ai = line.split('영어:')[1].strip()
+                            except: pass
+                            
+                            st.markdown("### 🔗 추출된 키워드로 텍스트 사냥 바로가기")
+                            link_c1, link_c2, link_c3 = st.columns(3)
+                            link_c1.link_button("🚀 1688 다이렉트 검색", f"https://s.1688.com/selloffer/offer_search.htm?keywords={cn_kw_ai}", use_container_width=True)
+                            link_c2.link_button("🚀 타오바오 다이렉트 검색", f"https://s.taobao.com/search?q={cn_kw_ai}", use_container_width=True)
+                            link_c3.link_button("🚀 알리 다이렉트 검색", f"https://ko.aliexpress.com/w/wholesale-{en_kw_ai.replace(' ', '-')}.html", use_container_width=True)
 
 # ==========================================
 # --- [Menu 5] 상품 등록 도우미 ---
