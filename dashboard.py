@@ -318,31 +318,89 @@ if 메뉴 == "🏠 홈":
 <h3 style="color:#ffd700; margin-top:0;">👋 위탁의 왕, 대표님 환영합니다!</h3>
 <p style="color:#e0e6ed; line-height:1.8;">단순히 상품을 올리고 기다리던 시대는 끝났습니다. 데이터 기반의 소싱과 AI 카피라이팅으로 지배하십시오.</p></div>""", unsafe_allow_html=True)
 
+# ==========================================
+# --- [Menu 2] 이미지로 검색 ---
+# ==========================================
 elif 메뉴 == "📸 이미지로 검색":
-    st.markdown("<h1>📸 AI 이미지 최저가 검색</h1>", unsafe_allow_html=True)
-    paste_result = paste_image_button(label="📋 캡처 이미지 붙여넣기 (클릭!)", background_color="#03C75A", text_color="#ffffff")
-    img_bytes = None
-    if paste_result.image_data is not None:
-        pil_image = paste_result.image_data.convert('RGB')
-        pil_image.thumbnail((1500, 1500))
-        buf = io.BytesIO()
-        pil_image.save(buf, format="JPEG")
-        img_bytes = buf.getvalue()
-    if img_bytes:
-        b64 = base64.b64encode(img_bytes).decode("utf-8")
+    st.markdown("<h1>📸 AI 이미지 최저가 검색 (Lens Mode)</h1>", unsafe_allow_html=True)
+    st.info("💡 상품을 캡처(Win+Shift+S)한 뒤 아래 버튼을 누르거나, 파일을 직접 업로드해주세요.")
+
+    # 🚨 [추가됨] 화면이 멈추거나 에러가 났을 때 강제로 뚫어주는 새로고침 버튼
+    if st.button("🔄 화면이 멈추거나 막혔을 때 누르세요 (초기화)", type="secondary"):
+        st.session_state['keywords_list'] = []
+        st.session_state['keyword_input'] = ""
+        st.session_state['run_search'] = False
+        st.rerun()
+
+    with st.container():
+        paste_result = paste_image_button(
+            label="📋 캡처한 이미지 바로 붙여넣기 (클릭!)",
+            background_color="#03C75A",
+            hover_background_color="#029f47",
+            text_color="#ffffff"
+        )
+
+        img_bytes = None
+
+        if paste_result.image_data is not None:
+            try:
+                pil_image = paste_result.image_data
+                if pil_image.mode != 'RGB': pil_image = pil_image.convert('RGB')
+                pil_image.thumbnail((1500, 1500))
+                buffered = io.BytesIO()
+                pil_image.save(buffered, format="JPEG")
+                img_bytes = buffered.getvalue()
+            except Exception as e:
+                st.error(f"이미지 처리 중 에러 발생: {e}")
+
+        # 🚨 [복구됨] 실수로 지워졌던 '컴퓨터 파일 업로드' 창 부활!
+        st.write("---")
+        with st.expander("📂 또는 내 컴퓨터의 파일로 업로드하기", expanded=True):
+            up_file = st.file_uploader("파일 선택", type=['jpg', 'jpeg', 'png'])
+            if up_file:
+                try:
+                    img_bytes = up_file.getvalue()
+                    pil_image = Image.open(io.BytesIO(img_bytes))
+                    if pil_image.mode != 'RGB': pil_image = pil_image.convert('RGB')
+                    pil_image.thumbnail((1500, 1500))
+                    buffered = io.BytesIO()
+                    pil_image.save(buffered, format="JPEG")
+                    img_bytes = buffered.getvalue()
+                except Exception as e:
+                    st.error(f"파일 업로드 에러: {e}")
+
+        if img_bytes:
+            b64 = base64.b64encode(img_bytes).decode("utf-8")
+            st.divider()
+            col_u1, col_u2 = st.columns([1, 2])
+            with col_u1:
+                st.image(img_bytes, width=300, caption="성공적으로 불러왔습니다!")
+            with col_u2:
+                st.markdown("### 1단계: AI 정밀 분석")
+                if st.button("🔍 AI 황금 키워드 9개 추출", key="btn_ai_kw"):
+                    with st.spinner("이미지 정밀 분석 중... (최대 10초 소요)"):
+                        prompt_text = """당신은 한국의 10년 차 탑티어 상품 소싱 MD입니다.
+1. 브랜드/모델명을 알면 앞쪽에 적으세요.
+2. 모르면 네이버/도매꾹 검색용 구체적 명사로 적으세요.
+3. 총 9개 명사형 키워드만 콤마(,)로 구분해서 출력하세요. (설명 없음)"""
+                        body = {
+                            "model": "claude-sonnet-4-6",
+                            "max_tokens": 300,
+                            "messages": [{"role": "user", "content": [
+                                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
+                                {"type": "text", "text": prompt_text}
+                            ]}]
+                        }
+                        res = call_claude_api(body)
+                        if res:
+                            st.session_state['keywords_list'] = [k.strip() for k in res.split(',')]
+                            st.rerun()
+                        else:
+                            st.error("⚠️ AI 서버 혼잡. [초기화] 버튼을 누르고 다시 시도해주세요.")
+
+    if st.session_state.get('keywords_list'):
         st.divider()
-        c1, c2 = st.columns([1, 2])
-        with c1: st.image(img_bytes, width=300)
-        with c2:
-            if st.button("🔍 AI 황금 키워드 9개 추출"):
-                prompt = "9개 명사형 키워드만 콤마(,)로 구분해서 출력해."
-                body = {"model": "claude-sonnet-4-6", "max_tokens": 300, "messages": [{"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}}, {"type": "text", "text": prompt}]}]}
-                res = call_claude_api(body)
-                if res:
-                    st.session_state['keywords_list'] = [k.strip() for k in res.split(',')]
-                    st.rerun()
-    if st.session_state['keywords_list']:
-        st.divider()
+        st.markdown("### 2단계: 사냥할 키워드 선택")
         k_list = st.session_state['keywords_list']
         cols = st.columns(3)
         for i, kw in enumerate(k_list):
@@ -350,10 +408,15 @@ elif 메뉴 == "📸 이미지로 검색":
                 st.session_state['keyword_input'] = kw
                 st.session_state['run_search'] = True
                 st.rerun()
-    if st.session_state.get('run_search'):
-        st.session_state['run_search'] = False
-        출력_통합_결과_레이아웃(st.session_state['keyword_input'])
 
+    if st.session_state.get('keyword_input') and st.session_state.get('keyword_input') != "":
+        st.divider()
+        with st.container():
+            st.markdown("### 3단계: 통합 검색어")
+            search_kw = st.text_input("🔎 검색어 수정", value=st.session_state['keyword_input'], key="input_search_kw")
+            if st.button("🛒 실시간 통합 최저가 사냥 시작", type="primary", key="btn_main_search") or st.session_state.get('run_search'):
+                st.session_state['run_search'] = False
+                if search_kw: 출력_통합_결과_레이아웃(search_kw)
 elif 메뉴 == "🔎 통합 최저가 검색":
     st.markdown("<h1>🔎 통합 최저가 검색 (텍스트)</h1>", unsafe_allow_html=True)
     text_kw = st.text_input("사냥할 상품명을 입력하세요", placeholder="예: 무선 가습기")
