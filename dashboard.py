@@ -313,7 +313,7 @@ st.sidebar.markdown("---")
 # --- [Menu 1] 홈 ---
 # ==========================================
 if 메뉴 == "🏠 홈":
-    st.markdown("<h1>👑 위탁의왕 자동화 대시보드 v6.6 Ultra Final</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>👑 위탁의왕 자동화 대시보드 v6.7 Ultra Final</h1>", unsafe_allow_html=True)
     st.caption(f"📅 오늘 날짜: {datetime.now().strftime('%Y-%m-%d')} | 대표님, 오늘도 위탁 시장의 왕이 되어보시죠!")
     st.divider()
 
@@ -498,9 +498,18 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
         <div style="background-color:rgba(3, 199, 90, 0.1); padding:15px; border-radius:10px; border:1px solid #03C75A; margin-bottom:15px;">
             <p style="margin:0; color:#03C75A;"><b>👑 3대장 순정 렌즈 브릿지 안내</b><br>
             타오바오 / 1688 / 알리익스프레스의 순정 카메라 성능을 100% 활용하는 비법입니다.<br>
-            이미지 분석 후 다운로드된 파일을 각 사이트 검색창의 카메라 아이콘(📷)에 <b>첨부하거나 드래그</b>하세요!</p>
+            아래 버튼을 눌러 <b>사이트를 미리 켜두신 후</b>, 이미지를 다운로드하여 각 검색창의 카메라 아이콘(📷)에 첨부하거나 드래그하세요!</p>
         </div>
         """, unsafe_allow_html=True)
+        
+        # 🚨 [UI 개선] 사이트 켜기 버튼을 맨 위로 배치하여 동선 최적화
+        st.markdown("### 🌐 3대장 순정 사이트 켜기")
+        btn_c1, btn_c2, btn_c3 = st.columns(3)
+        with btn_c1: st.link_button("🇨🇳 타오바오 켜기", "https://s.taobao.com", use_container_width=True)
+        with btn_c2: st.link_button("🇨🇳 1688 켜기", "https://s.1688.com", use_container_width=True)
+        with btn_c3: st.link_button("✈️ 알리 켜기", "https://ko.aliexpress.com", use_container_width=True)
+        
+        st.divider()
         
         paste_result_g = paste_image_button(
             label="📋 사냥할 이미지 붙여넣기 (PC용)",
@@ -544,22 +553,9 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
                     use_container_width=True
                 )
             with c2:
-                st.markdown("### 🏹 3대장 순정 렌즈 사냥법")
-                st.markdown("""
-                1. 위 **[💾 이미지 다운로드]** 버튼을 눌러 파일을 내 폰이나 PC에 저장합니다.
-                2. 아래 플랫폼 버튼을 눌러 검색창을 켭니다.
-                3. 검색창 우측의 **카메라 아이콘📷**을 누르고 저장한 사진을 첨부(선택)하세요!
-                """)
+                st.markdown("### 🏹 검색 / 추출 단계")
+                st.info("👈 다운로드 받은 이미지를 미리 켜둔 사이트 카메라(📷)에 넣으시거나, 아래 AI 버튼을 눌러 키워드로 검색하세요.")
                 
-                cc1, cc2, cc3 = st.columns(3)
-                with cc1:
-                    st.link_button("🇨🇳 타오바오 켜기", "https://s.taobao.com", use_container_width=True)
-                with cc2:
-                    st.link_button("🇨🇳 1688 켜기", "https://s.1688.com", use_container_width=True)
-                with cc3:
-                    st.link_button("✈️ 알리 켜기", "https://ko.aliexpress.com", use_container_width=True)
-                
-                # 🚨 [복구됨] AI 키워드 추출 및 다이렉트 링크 파싱 연결
                 if st.button("🤖 AI 현지어 타겟 키워드 동시 추출", type="primary", use_container_width=True):
                     with st.spinner("AI가 이미지에서 핵심 키워드를 스캔 중입니다..."):
                         b64_g = base64.b64encode(g_img_bytes).decode("utf-8")
@@ -579,7 +575,6 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
                             st.success("✅ AI 키워드 추출 완료!")
                             st.code(res)
                             
-                            # 파싱(Parsing) 로직으로 중국어/영어 키워드 분리
                             cn_kw_ai = "상품"
                             en_kw_ai = "item"
                             try:
