@@ -313,7 +313,7 @@ st.sidebar.markdown("---")
 # --- [Menu 1] 홈 ---
 # ==========================================
 if 메뉴 == "🏠 홈":
-    st.markdown("<h1>👑 위탁의왕 자동화 대시보드 v6.3 Ultra Final</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>👑 위탁의왕 자동화 대시보드 v6.5 (Mobile Ready)</h1>", unsafe_allow_html=True)
     st.caption(f"📅 오늘 날짜: {datetime.now().strftime('%Y-%m-%d')} | 대표님, 오늘도 위탁 시장의 왕이 되어보시죠!")
     st.divider()
 
@@ -349,7 +349,7 @@ elif 메뉴 == "📸 이미지로 검색":
 
     with st.container():
         paste_result = paste_image_button(
-            label="📋 캡처한 이미지 바로 붙여넣기 (클릭!)",
+            label="📋 캡처한 이미지 바로 붙여넣기 (PC용)",
             background_color="#03C75A",
             hover_background_color="#029f47",
             text_color="#ffffff"
@@ -369,12 +369,12 @@ elif 메뉴 == "📸 이미지로 검색":
                 st.error(f"이미지 처리 중 에러 발생: {e}")
 
         st.write("---")
-        with st.expander("📂 또는 내 컴퓨터의 파일로 업로드하기", expanded=True):
-            up_file = st.file_uploader("파일 선택", type=['jpg', 'jpeg', 'png'])
+        with st.expander("📂 내 앨범/폴더에서 사진 선택하기 (스마트폰용)", expanded=True):
+            up_file = st.file_uploader("사진 선택", type=['jpg', 'jpeg', 'png'])
             if up_file:
                 try:
-                    img_bytes = up_file.getvalue()
-                    pil_image = Image.open(io.BytesIO(img_bytes))
+                    img_bytes_temp = up_file.getvalue()
+                    pil_image = Image.open(io.BytesIO(img_bytes_temp))
                     if pil_image.mode != 'RGB': pil_image = pil_image.convert('RGB')
                     pil_image.thumbnail((1500, 1500))
                     buffered = io.BytesIO()
@@ -449,7 +449,6 @@ elif 메뉴 == "🔎 통합 최저가 검색":
 elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
     st.markdown("<h1>🇨🇳 글로벌 신뢰도 1티어 최저가 사냥</h1>", unsafe_allow_html=True)
     
-    # 상단 치트키 섹션
     st.markdown("""
     <div style="background-color:rgba(255,215,0,0.1); padding:15px; border-radius:10px; border:1px solid #ffd700; margin-bottom:20px;">
         <h4 style="margin-top:0; color:#ffd700;">💡 신상품 사입 중국어 치트키</h4>
@@ -463,7 +462,6 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
 
     탭1, 탭2 = st.tabs(["🔤 텍스트 사냥", "📸 3대장 순정 렌즈 사냥 (브릿지 모드)"])
 
-    # --- 탭 1: 텍스트 검색 ---
     with 탭1:
         col1, col2 = st.columns([3, 1])
         global_kw = col1.text_input("사냥할 상품명을 입력하세요 (한글)", placeholder="예: 무소음 얼음틀", key="txt_g_input")
@@ -495,18 +493,17 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
                     with c2: st.link_button("🚀 타오바오 바로가기", f"https://s.taobao.com/search?q={cn_kw}", use_container_width=True)
                     with c3: st.link_button("🚀 알리 바로가기", f"https://ko.aliexpress.com/w/wholesale-{en_kw.replace(' ', '-')}.html", use_container_width=True)
 
-    # --- 탭 2: 순정 AI 렌즈 브릿지 모드 ---
     with 탭2:
         st.markdown("""
         <div style="background-color:rgba(3, 199, 90, 0.1); padding:15px; border-radius:10px; border:1px solid #03C75A; margin-bottom:15px;">
             <p style="margin:0; color:#03C75A;"><b>👑 3대장 순정 렌즈 브릿지 안내</b><br>
             타오바오 / 1688 / 알리익스프레스의 순정 카메라 성능을 100% 활용하는 비법입니다.<br>
-            이미지 분석 후 다운로드된 파일을 각 사이트 검색창의 카메라 아이콘(📷)에 <b>드래그</b>만 하세요!</p>
+            이미지 분석 후 다운로드된 파일을 각 사이트 검색창의 카메라 아이콘(📷)에 <b>첨부하거나 드래그</b>하세요!</p>
         </div>
         """, unsafe_allow_html=True)
         
         paste_result_g = paste_image_button(
-            label="📋 사냥할 이미지 붙여넣기 (클릭!)",
+            label="📋 사냥할 이미지 붙여넣기 (PC용)",
             background_color="#ff4500", hover_background_color="#e52e04",
             text_color="#ffffff", key="paste_bridge"
         )
@@ -518,6 +515,22 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
             buffered = io.BytesIO()
             pil_image.save(buffered, format="JPEG")
             g_img_bytes = buffered.getvalue()
+
+        # 🚨 [추가됨] 모바일/태블릿용 폴더 업로드 기능 장착
+        st.write("---")
+        with st.expander("📱 내 앨범/폴더에서 사진 선택하기 (모바일/스마트폰용)", expanded=True):
+            up_file_g = st.file_uploader("사진 파일 첨부", type=['jpg', 'jpeg', 'png'], key="up_g_bridge")
+            if up_file_g:
+                try:
+                    g_img_bytes_temp = up_file_g.getvalue()
+                    pil_image = Image.open(io.BytesIO(g_img_bytes_temp))
+                    if pil_image.mode != 'RGB': pil_image = pil_image.convert('RGB')
+                    pil_image.thumbnail((1200, 1200))
+                    buffered = io.BytesIO()
+                    pil_image.save(buffered, format="JPEG")
+                    g_img_bytes = buffered.getvalue()
+                except Exception as e:
+                    st.error(f"파일 업로드 에러: {e}")
 
         if g_img_bytes:
             st.divider()
@@ -534,9 +547,9 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
             with c2:
                 st.markdown("### 🏹 3대장 순정 렌즈 사냥법")
                 st.markdown("""
-                1. 위 **[💾 이미지 다운로드]** 버튼을 눌러 파일을 저장합니다.
+                1. 위 **[💾 이미지 다운로드]** 버튼을 눌러 파일을 내 폰이나 PC에 저장합니다.
                 2. 아래 플랫폼 버튼을 눌러 검색창을 켭니다.
-                3. 검색창 우측의 **카메라 아이콘📷**을 누르고 저장한 파일을 선택(또는 드래그)하세요!
+                3. 검색창 우측의 **카메라 아이콘📷**을 누르고 저장한 사진을 첨부(선택)하세요!
                 """)
                 
                 cc1, cc2, cc3 = st.columns(3)
@@ -560,6 +573,7 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
                         })
                         st.success("✅ AI 키워드 추출 완료!")
                         st.code(res)
+
 # ==========================================
 # --- [Menu 5] 상품 등록 도우미 ---
 # ==========================================
@@ -659,7 +673,7 @@ elif 메뉴 == "🕵️‍♂️ 경쟁사 리뷰 분석기":
                         st.error("AI 분석 중 오류가 발생했습니다. 다시 시도해주세요.")
 
 # ==========================================
-# --- [Menu 7] 마진 계산기 (비즈니스 전략 업데이트 적용) ---
+# --- [Menu 7] 마진 계산기 ---
 # ==========================================
 elif 메뉴 == "💰 마진 계산기":
     st.markdown("<h1>💰 스마트 묶음 마진 계산기</h1>", unsafe_allow_html=True)
@@ -677,7 +691,6 @@ elif 메뉴 == "💰 마진 계산기":
         if st.button("🚀 플랫폼별 추천 묶음 판매가 계산", type="primary", use_container_width=True):
             total_cost = (buy_p * qty) + ship_p
             
-            # 🚨 전략 업데이트: 스마트스토어 수수료는 마케팅비로 대표님이 전액 감당 (계산식에서 제외)
             fees = {"스마트스토어(대표님 전액부담)": 0.00, "쿠팡(11%)": 0.11, "11번가(13%)": 0.13}
             
             st.markdown(f"""<div style="padding:15px; background-color:rgba(255,215,0,0.1); border-radius:8px; margin-bottom:20px;">
@@ -687,7 +700,6 @@ elif 메뉴 == "💰 마진 계산기":
             
             f_cols = st.columns(3)
             for i, (name, fee) in enumerate(fees.items()):
-                # PG수수료 3.6% 포함 계산
                 rec = total_cost / (1 - fee - 0.036 - (target_m / 100))
                 expected_margin = rec * (target_m / 100)
                 
