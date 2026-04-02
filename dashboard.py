@@ -444,14 +444,15 @@ elif 메뉴 == "🔎 통합 최저가 검색":
             if text_kw: 출력_통합_결과_레이아웃(text_kw)
 
 # ==========================================
-# --- [Menu 4] 글로벌 사입/직구 검색 (이미지 기능 추가) ---
+# --- [Menu 4] 글로벌 사입/직구 검색 (3대장 순정 렌즈 브릿지) ---
 # ==========================================
 elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
     st.markdown("<h1>🇨🇳 글로벌 신뢰도 1티어 최저가 사냥</h1>", unsafe_allow_html=True)
     
+    # 상단 치트키 섹션
     st.markdown("""
     <div style="background-color:rgba(255,215,0,0.1); padding:15px; border-radius:10px; border:1px solid #ffd700; margin-bottom:20px;">
-        <h4 style="margin-top:0; color:#ffd700;">💡 신상품 사입 치트키 (검색어 뒤에 붙여보세요)</h4>
+        <h4 style="margin-top:0; color:#ffd700;">💡 신상품 사입 중국어 치트키</h4>
         <div style="margin-top:10px;">
             <span class="keyword-badge">ins风</span> 인스타 감성 / 트렌디 디자인<br>
             <span class="keyword-badge">新款</span> 최신 모델 / 이번 시즌 신상품<br>
@@ -460,27 +461,22 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
     </div>
     """, unsafe_allow_html=True)
 
-    # 탭을 나누어 텍스트와 이미지 검색을 분리합니다.
-    탭1, 탭2 = st.tabs(["🔤 텍스트로 사냥", "📸 이미지로 사냥 (AI 스캐너)"])
+    탭1, 탭2 = st.tabs(["🔤 텍스트 사냥", "📸 3대장 순정 렌즈 사냥 (브릿지 모드)"])
 
-    # --- 기존 텍스트 검색 탭 ---
+    # --- 탭 1: 텍스트 검색 ---
     with 탭1:
         col1, col2 = st.columns([3, 1])
-        global_kw = col1.text_input("사냥할 상품명을 입력하세요 (한글)", placeholder="예: 인스타풍 유리컵")
+        global_kw = col1.text_input("사냥할 상품명을 입력하세요 (한글)", placeholder="예: 무소음 얼음틀", key="txt_g_input")
         
-        if col2.button("🌐 글로벌 최저가 탐색", type="primary", use_container_width=True, key="btn_g_text"):
+        if col2.button("🌐 글로벌 최저가 탐색", type="primary", use_container_width=True):
             if global_kw:
-                with st.spinner("Claude AI가 글로벌용 키워드로 번역 중..."):
-                    prompt = f"'{global_kw}'를 알리익스프레스 검색용 영문으로 번역해줘. 설명 없이 영어만 출력해."
-                    en_kw = call_claude_api({"max_tokens": 50, "messages": [{"role": "user", "content": prompt}]})
+                with st.spinner("AI가 글로벌 최적화 키워드로 번역 중..."):
+                    en_kw = call_claude_api({"max_tokens": 50, "messages": [{"role": "user", "content": f"'{global_kw}'를 알리익스프레스 검색용 영문으로 번역해줘. 설명 없이 영어만 출력해."}]})
                     cn_kw = call_claude_api({"max_tokens": 50, "messages": [{"role": "user", "content": f"'{global_kw}'를 1688 검색용 중국어 간체로 번역해줘. 설명 없이 중국어만 출력해."}]})
-                    en_kw = en_kw if en_kw else global_kw
-                    cn_kw = cn_kw if cn_kw else global_kw
                 
                 st.success(f"🔤 번역 완료! ✈️ {en_kw} / 🇨🇳 {cn_kw}")
                 ali_results = 검색_글로벌_알리(en_kw)
                 
-                st.divider()
                 if ali_results:
                     st.markdown(f"### 🏆 '{global_kw}' 글로벌 소싱 TOP 9")
                     cols = st.columns(3)
@@ -489,55 +485,72 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
                             st.markdown(f"""<div class="result-card"><div style="position:absolute; top:10px; left:10px; background-color:#ff4500; color:white; padding:3px 8px; border-radius:5px; font-weight:bold; font-size:0.8rem;">판매량 {item['판매량']}+</div>
 <img src="{item['이미지']}" style="width:100%; border-radius:8px; margin-bottom:10px;">
 <h3 style="color:#03C75A; margin:0;">{item['가격']:,}원</h3>
-<div style="color:#ffd700; font-size:0.9rem; margin-bottom:10px;">⭐ 평점: {item['평점']}</div>
 <p style="color:#ccc; font-size:0.8rem; height:40px; overflow:hidden;">{item['제목'][:50]}...</p>
 </div>""", unsafe_allow_html=True)
                             st.link_button("✈️ 상품 바로가기", item['링크'], use_container_width=True)
                 else:
-                    st.warning("⚠️ 글로벌 API 서버 혼잡으로 다이렉트 소싱 버튼을 띄웁니다.")
-                    st.markdown("### 🔗 AI 번역 기반 다이렉트 소싱")
+                    st.warning("⚠️ API 서버 혼잡으로 다이렉트 검색 버튼을 활성화합니다.")
                     c1, c2, c3 = st.columns(3)
-                    with c1: st.link_button("🚀 1688 (도매) 결과 보기", f"https://s.1688.com/selloffer/offer_search.htm?keywords={cn_kw}", use_container_width=True)
-                    with c2: st.link_button("🚀 타오바오 결과 보기", f"https://s.taobao.com/search?q={cn_kw}", use_container_width=True)
-                    with c3: st.link_button("🚀 알리익스프레스 결과 보기", f"https://ko.aliexpress.com/w/wholesale-{en_kw.replace(' ', '-')}.html", use_container_width=True)
+                    with c1: st.link_button("🚀 1688 바로가기", f"https://s.1688.com/selloffer/offer_search.htm?keywords={cn_kw}", use_container_width=True)
+                    with c2: st.link_button("🚀 타오바오 바로가기", f"https://s.taobao.com/search?q={cn_kw}", use_container_width=True)
+                    with c3: st.link_button("🚀 알리 바로가기", f"https://ko.aliexpress.com/w/wholesale-{en_kw.replace(' ', '-')}.html", use_container_width=True)
 
-    # --- 신규 이미지 스캐너 탭 ---
+    # --- 탭 2: 순정 AI 렌즈 브릿지 모드 ---
     with 탭2:
-        st.info("💡 타오바오와 1688은 외부 프로그램의 이미지 강제 검색을 차단합니다. 대신, AI가 이미지를 스캔해 **'가장 정확한 현지 타겟 키워드'**를 즉시 뽑아드리고, 다이렉트 창을 열어드립니다!")
+        st.markdown("""
+        <div style="background-color:rgba(3, 199, 90, 0.1); padding:15px; border-radius:10px; border:1px solid #03C75A; margin-bottom:15px;">
+            <p style="margin:0; color:#03C75A;"><b>👑 3대장 순정 렌즈 브릿지 안내</b><br>
+            타오바오 / 1688 / 알리익스프레스의 순정 카메라 성능을 100% 활용하는 비법입니다.<br>
+            이미지 분석 후 다운로드된 파일을 각 사이트 검색창의 카메라 아이콘(📷)에 <b>드래그</b>만 하세요!</p>
+        </div>
+        """, unsafe_allow_html=True)
         
         paste_result_g = paste_image_button(
-            label="📋 사냥할 상품 이미지 붙여넣기 (클릭!)",
-            background_color="#ff4500",
-            hover_background_color="#e52e04",
-            text_color="#ffffff",
-            key="paste_global"
+            label="📋 사냥할 이미지 붙여넣기 (클릭!)",
+            background_color="#ff4500", hover_background_color="#e52e04",
+            text_color="#ffffff", key="paste_bridge"
         )
 
         g_img_bytes = None
         if paste_result_g.image_data is not None:
             pil_image = paste_result_g.image_data.convert('RGB')
-            pil_image.thumbnail((1000, 1000))
+            pil_image.thumbnail((1200, 1200))
             buffered = io.BytesIO()
             pil_image.save(buffered, format="JPEG")
             g_img_bytes = buffered.getvalue()
 
-        st.write("---")
-        with st.expander("📂 파일로 업로드하기"):
-            up_file_g = st.file_uploader("사진 선택", type=['jpg', 'jpeg', 'png'], key="up_g")
-            if up_file_g:
-                g_img_bytes = up_file_g.getvalue()
-
         if g_img_bytes:
-            b64_g = base64.b64encode(g_img_bytes).decode("utf-8")
+            st.divider()
             c1, c2 = st.columns([1, 2])
-            with c1: st.image(g_img_bytes, width=250)
+            with c1:
+                st.image(g_img_bytes, width=280, caption="사냥 준비 완료")
+                st.download_button(
+                    label="💾 검색용 이미지 다운로드",
+                    data=g_img_bytes,
+                    file_name="search_item.jpg",
+                    mime="image/jpeg",
+                    use_container_width=True
+                )
             with c2:
-                if st.button("🔍 AI 현지어 스캐닝 시작", use_container_width=True, type="primary"):
-                    with st.spinner("이미지 분석 및 1688/타오바오 타겟 키워드 추출 중..."):
-                        prompt = """이 상품 이미지를 보고 중국(1688, 타오바오)과 알리익스프레스에서 가장 검색이 잘 될 만한 구체적인 명사형 키워드를 뽑아줘.
-출력형식:
-중국어: [1688 검색용 중국어 간체 키워드]
-영어: [알리 검색용 영어 키워드]"""
+                st.markdown("### 🏹 3대장 순정 렌즈 사냥법")
+                st.markdown("""
+                1. 위 **[💾 이미지 다운로드]** 버튼을 눌러 파일을 저장합니다.
+                2. 아래 플랫폼 버튼을 눌러 검색창을 켭니다.
+                3. 검색창 우측의 **카메라 아이콘📷**을 누르고 저장한 파일을 선택(또는 드래그)하세요!
+                """)
+                
+                cc1, cc2, cc3 = st.columns(3)
+                with cc1:
+                    st.link_button("🇨🇳 타오바오 켜기", "https://s.taobao.com", use_container_width=True)
+                with cc2:
+                    st.link_button("🇨🇳 1688 켜기", "https://s.1688.com", use_container_width=True)
+                with cc3:
+                    st.link_button("✈️ 알리 켜기", "https://ko.aliexpress.com", use_container_width=True)
+                
+                if st.button("🤖 AI 현지어 타겟 키워드 동시 추출", type="primary", use_container_width=True):
+                    with st.spinner("AI가 이미지에서 핵심 키워드를 스캔 중입니다..."):
+                        b64_g = base64.b64encode(g_img_bytes).decode("utf-8")
+                        prompt = "이 이미지 속 상품을 글로벌 도매 시장에서 찾기 위한 가장 정확한 중국어 간체 키워드와 영어 키워드를 각각 한 줄씩 뽑아줘."
                         res = call_claude_api({
                             "model": "claude-sonnet-4-6", "max_tokens": 100,
                             "messages": [{"role": "user", "content": [
@@ -545,27 +558,8 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
                                 {"type": "text", "text": prompt}
                             ]}]
                         })
-                        if res:
-                            cn_kw_ai = "상품"
-                            en_kw_ai = "item"
-                            try:
-                                for line in res.split('\n'):
-                                    if '중국어:' in line: cn_kw_ai = line.split('중국어:')[1].strip()
-                                    if '영어:' in line: en_kw_ai = line.split('영어:')[1].strip()
-                            except: pass
-                            
-                            st.success("✅ AI 스캐닝 완료!")
-                            st.markdown(f"**🇨🇳 1688/타오바오 타겟 키워드:** `{cn_kw_ai}`")
-                            st.markdown(f"**✈️ 알리익스프레스 타겟 키워드:** `{en_kw_ai}`")
-                            
-                            st.markdown("### 🔗 결과 바로보기")
-                            cc1, cc2, cc3 = st.columns(3)
-                            cc1.link_button("🚀 1688 다이렉트 검색", f"https://s.1688.com/selloffer/offer_search.htm?keywords={cn_kw_ai}", use_container_width=True)
-                            cc2.link_button("🚀 타오바오 다이렉트 검색", f"https://s.taobao.com/search?q={cn_kw_ai}", use_container_width=True)
-                            cc3.link_button("🚀 알리 다이렉트 검색", f"https://ko.aliexpress.com/w/wholesale-{en_kw_ai.replace(' ', '-')}.html", use_container_width=True)
-                            
-                            st.info("💡 **[핵심 꿀팁]** 위 버튼을 눌러 창을 띄우신 후, 복사해 둔 이미지를 현지 사이트 검색창의 **[카메라 아이콘 📷]** 쪽에 드래그 앤 드롭하시면 똑같은 공장 상품을 100% 찾아낼 수 있습니다!")
-
+                        st.success("✅ AI 키워드 추출 완료!")
+                        st.code(res)
 # ==========================================
 # --- [Menu 5] 상품 등록 도우미 ---
 # ==========================================
