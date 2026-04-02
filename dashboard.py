@@ -494,100 +494,185 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
                     with c3: st.link_button("🚀 알리 바로가기", f"https://ko.aliexpress.com/w/wholesale-{en_kw.replace(' ', '-')}.html", use_container_width=True)
 
     with 탭2:
-        st.markdown("""
-        <div style="background-color:rgba(3, 199, 90, 0.1); padding:15px; border-radius:10px; border:1px solid #03C75A; margin-bottom:15px;">
-            <p style="margin:0; color:#03C75A;"><b>👑 3대장 순정 렌즈 브릿지 안내</b><br>
-            타오바오 / 1688 / 알리익스프레스의 순정 카메라 성능을 100% 활용하는 비법입니다.<br>
-            아래 버튼을 눌러 <b>사이트를 미리 켜두신 후</b>, 이미지를 다운로드하여 각 검색창의 카메라 아이콘(📷)에 첨부하거나 드래그하세요!</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # 🚨 [UI 개선] 사이트 켜기 버튼을 맨 위로 배치하여 동선 최적화
-        st.markdown("### 🌐 3대장 순정 사이트 켜기")
-        btn_c1, btn_c2, btn_c3 = st.columns(3)
-        with btn_c1: st.link_button("🇨🇳 타오바오 켜기", "https://s.taobao.com", use_container_width=True)
-        with btn_c2: st.link_button("🇨🇳 1688 켜기", "https://s.1688.com", use_container_width=True)
-        with btn_c3: st.link_button("✈️ 알리 켜기", "https://ko.aliexpress.com", use_container_width=True)
-        
+        import glob, zipfile, io as _io
+
+        st.caption("AI 트렌드 분석 → 블루오션 스캔 → 최저가 소싱 → 멋진 HTML 상세페이지 자동 생성·저장")
+
+        col_s1, col_s2, col_s3 = st.columns(3)
+        카테고리 = col_s1.selectbox("타겟 카테고리", [
+            "자동 탐지 (AI 추천)", "생활용품", "주방용품", "뷰티/헬스",
+            "반려동물", "스포츠/레저", "디지털/가전", "패션잡화", "유아동"
+        ], key="sel_category")
+        타겟가격대 = col_s2.selectbox("타겟 판매가대", [
+            "전체", "1만원 이하", "1~3만원", "3~5만원", "5만원 이상"
+        ], key="sel_price_range")
+        추천수 = col_s3.number_input("추천 상품 수", min_value=3, max_value=10, value=5, key="num_recommend")
+        send_tg = st.checkbox("📲 완료 후 텔레그램 발송", value=True, key="chk_telegram")
+
         st.divider()
-        
-        paste_result_g = paste_image_button(
-            label="📋 사냥할 이미지 붙여넣기 (PC용)",
-            background_color="#ff4500", hover_background_color="#e52e04",
-            text_color="#ffffff", key="paste_bridge"
-        )
 
-        g_img_bytes = None
-        if paste_result_g.image_data is not None:
-            pil_image = paste_result_g.image_data.convert('RGB')
-            pil_image.thumbnail((1200, 1200))
-            buffered = io.BytesIO()
-            pil_image.save(buffered, format="JPEG")
-            g_img_bytes = buffered.getvalue()
+        # ── 이력 패널 ──────────────────────────────────────────────────────
+        이력data = 이력_로드()
+        총키워드수 = sum(len(v) for v in 이력data.values())
+        col_h1, col_h2, col_h3 = st.columns([2, 2, 1])
+        col_h1.metric("📋 누적 추천 키워드", f"{총키워드수}개")
+        col_h2.metric("📅 추천 실행 일수",   f"{len(이력data)}일")
+        with col_h3:
+            if st.button("🗑️ 이력 초기화", key="btn_reset_history", type="secondary"):
+                if os.path.exists(이력파일):
+                    os.remove(이력파일)
+                st.success("초기화 완료!")
+                st.rerun()
 
-        st.write("---")
-        with st.expander("📱 내 앨범/폴더에서 사진 선택하기 (모바일/스마트폰용)", expanded=True):
-            up_file_g = st.file_uploader("사진 파일 첨부", type=['jpg', 'jpeg', 'png'], key="up_g_bridge")
-            if up_file_g:
-                try:
-                    g_img_bytes_temp = up_file_g.getvalue()
-                    pil_image = Image.open(io.BytesIO(g_img_bytes_temp))
-                    if pil_image.mode != 'RGB': pil_image = pil_image.convert('RGB')
-                    pil_image.thumbnail((1200, 1200))
-                    buffered = io.BytesIO()
-                    pil_image.save(buffered, format="JPEG")
-                    g_img_bytes = buffered.getvalue()
-                except Exception as e:
-                    st.error(f"파일 업로드 에러: {e}")
+        if 이력data:
+            with st.expander("📖 날짜별 추천 이력 보기"):
+                for 날짜, kw_list in sorted(이력data.items(), reverse=True):
+                    st.markdown(f"**{날짜}** — {', '.join(kw_list)}")
 
-        if g_img_bytes:
-            st.divider()
-            c1, c2 = st.columns([1, 2])
-            with c1:
-                st.image(g_img_bytes, width=280, caption="사냥 준비 완료")
+        # ── 저장된 HTML 파일 목록 ──────────────────────────────────────────
+        saved_files = sorted(glob.glob("상세페이지_저장/*.html"), reverse=True)
+        if saved_files:
+            with st.expander(f"📂 저장된 HTML 상세페이지 ({len(saved_files)}개)", expanded=False):
+                for fp in saved_files:
+                    fname = os.path.basename(fp)
+                    cf1, cf2 = st.columns([4, 1])
+                    cf1.markdown(f"📄 `{fname}`")
+                    with open(fp, 'r', encoding='utf-8') as fh:
+                        cf2.download_button(
+                            label="⬇️ 다운로드",
+                            data=fh.read(),
+                            file_name=fname,
+                            mime="text/html",
+                            key=f"dl_saved_{fname}"
+                        )
+
+        st.divider()
+
+        # ── 메인 실행 버튼 ─────────────────────────────────────────────────
+        if st.button("🚀 AI 자동 분석 시작 — 오늘의 황금 상품 사냥",
+                     type="primary", use_container_width=True, key="btn_auto_daily"):
+
+            결과_목록 = []
+
+            st.markdown("### 🧠 STEP 1 — AI 트렌드 분석")
+            with st.spinner("Claude AI가 블루오션 키워드 분석 중..."):
+                키워드목록 = ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수)
+            if not 키워드목록:
+                st.error("키워드 생성 실패. 다시 시도해주세요.")
+                st.stop()
+            st.success(f"✅ {len(키워드목록)}개 키워드 생성 완료!")
+
+            오늘 = datetime.now().strftime('%Y-%m-%d')
+            이력_저장(오늘, [item['keyword'] for item in 키워드목록])
+
+            st.markdown("### 📊 STEP 2 — 네이버 경쟁강도 분석")
+            키워드목록 = 경쟁강도_필터(키워드목록)
+
+            st.markdown("### 💎 STEP 3 — 소싱 & HTML 상세페이지 자동 생성")
+            tg_msg = f"👑 <b>오늘의 위탁왕 자동추천</b> ({datetime.now().strftime('%Y-%m-%d')})\n\n"
+
+            for idx, item in enumerate(키워드목록):
+                kw_item     = item['keyword']
+                icon        = '🟢' if item['score'] == '상' else '🟡' if item['score'] == '중' else '🔴'
+                ocean_label = item['ocean']
+
+                with st.expander(
+                    f"{icon} #{idx+1} [{ocean_label}] **{kw_item}** — 경쟁상품 {item['total_count']:,}개",
+                    expanded=(idx == 0)
+                ):
+                    ca, cb = st.columns([2, 1])
+                    with ca:
+                        st.markdown(f"**추천 이유:** {item['reason']}")
+                        st.markdown(f"**예상 가격대:** {item['price_range']}")
+                        st.markdown(f"**경쟁 강도:** {ocean_label} ({item['total_count']:,}개)")
+                    with cb:
+                        with st.spinner("최저가 소싱 확인 중..."):
+                            소싱 = 소싱데이터_조회(kw_item)
+                        if 소싱:
+                            st.metric("최저 소싱가", f"{소싱['총가격']:,}원")
+                            st.caption(f"출처: {소싱['출처']}")
+                            if 소싱.get('이미지'):
+                                st.image(소싱['이미지'], width=120, caption="소싱 이미지")
+                            st.link_button("소싱처 바로가기 →", 소싱['링크'])
+                        else:
+                            st.warning("소싱 데이터 없음")
+
+                    st.divider()
+                    with st.spinner(f"'{kw_item}' HTML 상세페이지 생성 중..."):
+                        ai_text, html_str, filepath = ai_상세페이지_생성_및_저장(
+                            kw_item, 소싱, item['reason'], ocean_label, idx
+                        )
+
+                    if ai_text:
+                        st.markdown("#### 📄 AI 자동 생성 상세페이지 기획안")
+                        st.markdown(ai_text)
+
+                        # ✅ 개별 HTML 다운로드 버튼
+                        if html_str and filepath:
+                            fname = os.path.basename(filepath)
+                            st.download_button(
+                                label=f"⬇️ HTML 상세페이지 다운로드 ({fname})",
+                                data=html_str,
+                                file_name=fname,
+                                mime="text/html",
+                                key=f"dl_now_{idx}",
+                                use_container_width=True,
+                                type="primary"
+                            )
+                            st.success(f"✅ 서버 저장 완료: `상세페이지_저장/{fname}`")
+
+                        st.text_area("📋 복사하기 (Ctrl+A → Ctrl+C)",
+                                     value=ai_text, height=180, key=f"copy_{idx}")
+                        결과_목록.append({
+                            "keyword":   kw_item,
+                            "ocean":     ocean_label,
+                            "count":     item['total_count'],
+                            "소싱가":    소싱['총가격'] if 소싱 else 0,
+                            "출처":      소싱['출처']  if 소싱 else "-",
+                            "html_file": os.path.basename(filepath) if filepath else "-"
+                        })
+                        소싱가_txt = f"{소싱['총가격']:,}원 ({소싱['출처']})" if 소싱 else "미확인"
+                        tg_msg += (f"{idx+1}. <b>{kw_item}</b> {ocean_label}\n"
+                                   f"   경쟁: {item['total_count']:,}개 | 소싱가: {소싱가_txt}\n\n")
+
+            # ── 텔레그램 발송 ──────────────────────────────────────────────
+            if send_tg and 결과_목록:
+                tg_msg += (f"총 <b>{len(결과_목록)}개</b> 분석 완료 ✅\n"
+                           f"📂 HTML 파일 {len(결과_목록)}개 자동 저장됨")
+                send_telegram(tg_msg)
+                st.success("📲 텔레그램으로 결과 발송 완료!")
+
+            # ── 최종 요약 테이블 + 전체 ZIP 다운로드 ──────────────────────
+            if 결과_목록:
+                st.divider()
+                st.markdown("### 🏆 오늘의 추천 상품 최종 요약")
+                df = pd.DataFrame([{
+                    "순위":       i + 1,
+                    "상품키워드": r['keyword'],
+                    "경쟁강도":   r['ocean'],
+                    "네이버경쟁수": f"{r['count']:,}개",
+                    "최저소싱가": f"{r['소싱가']:,}원" if r['소싱가'] else "미확인",
+                    "소싱출처":   r['출처'],
+                    "HTML파일":   r['html_file']
+                } for i, r in enumerate(결과_목록)])
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+                # ✅ 전체 ZIP 다운로드
+                zip_buf = _io.BytesIO()
+                with zipfile.ZipFile(zip_buf, 'w') as zf:
+                    for r in 결과_목록:
+                        fp = os.path.join("상세페이지_저장", r['html_file'])
+                        if os.path.exists(fp):
+                            with open(fp, 'r', encoding='utf-8') as fh:
+                                zf.writestr(r['html_file'], fh.read())
+                zip_buf.seek(0)
                 st.download_button(
-                    label="💾 검색용 이미지 다운로드",
-                    data=g_img_bytes,
-                    file_name="search_item.jpg",
-                    mime="image/jpeg",
+                    label="📦 오늘의 상세페이지 전체 ZIP 다운로드",
+                    data=zip_buf.getvalue(),
+                    file_name=f"위탁왕_상세페이지_{datetime.now().strftime('%Y%m%d')}.zip",
+                    mime="application/zip",
                     use_container_width=True
                 )
-            with c2:
-                st.markdown("### 🏹 검색 / 추출 단계")
-                st.info("👈 다운로드 받은 이미지를 미리 켜둔 사이트 카메라(📷)에 넣으시거나, 아래 AI 버튼을 눌러 키워드로 검색하세요.")
-                
-                if st.button("🤖 AI 현지어 타겟 키워드 동시 추출", type="primary", use_container_width=True):
-                    with st.spinner("AI가 이미지에서 핵심 키워드를 스캔 중입니다..."):
-                        b64_g = base64.b64encode(g_img_bytes).decode("utf-8")
-                        prompt = """이 이미지 속 상품을 글로벌 도매 시장에서 찾기 위한 가장 정확한 중국어 간체 명사형 키워드와 영어 키워드를 각각 한 줄씩 뽑아줘.
-출력형식:
-중국어: [중국어 간체 키워드]
-영어: [영어 키워드]"""
-                        res = call_claude_api({
-                            "model": "claude-sonnet-4-6", "max_tokens": 100,
-                            "messages": [{"role": "user", "content": [
-                                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64_g}},
-                                {"type": "text", "text": prompt}
-                            ]}]
-                        })
-                        
-                        if res:
-                            st.success("✅ AI 키워드 추출 완료!")
-                            st.code(res)
-                            
-                            cn_kw_ai = "상품"
-                            en_kw_ai = "item"
-                            try:
-                                for line in res.split('\n'):
-                                    if '중국어:' in line: cn_kw_ai = line.split('중국어:')[1].strip()
-                                    if '영어:' in line: en_kw_ai = line.split('영어:')[1].strip()
-                            except: pass
-                            
-                            st.markdown("### 🔗 추출된 키워드로 텍스트 사냥 바로가기")
-                            link_c1, link_c2, link_c3 = st.columns(3)
-                            link_c1.link_button("🚀 1688 다이렉트 검색", f"https://s.1688.com/selloffer/offer_search.htm?keywords={cn_kw_ai}", use_container_width=True)
-                            link_c2.link_button("🚀 타오바오 다이렉트 검색", f"https://s.taobao.com/search?q={cn_kw_ai}", use_container_width=True)
-                            link_c3.link_button("🚀 알리 다이렉트 검색", f"https://ko.aliexpress.com/w/wholesale-{en_kw_ai.replace(' ', '-')}.html", use_container_width=True)
 
 # ==========================================
 # --- [Menu 5] 상품 등록 도우미 ---
@@ -907,34 +992,206 @@ elif 메뉴 == "💎 블루오션 탐지 + 🤖 자동추천":
             bar.empty()
             return sorted(결과, key=lambda x: x['total_count'])
 
-        def 소싱데이터_조회(keyword):
-            n = 필터링(네이버검색(keyword, 개수=10).get('items', []))
-            d = 도매꾹검색(keyword, 개수=5)
-            combined = sorted(n[:5] + d[:5], key=lambda x: x['총가격'])
-            return combined[0] if combined else None
+        """
+위탁의왕 Ultra — HTML 상세페이지 생성 헬퍼
+기존 app.py 에 이 파일의 내용을 붙여넣으세요.
+  1. generate_html_detail_page  → 상단 함수 영역에 추가
+  2. ai_상세페이지_생성_및_저장    → 상단 함수 영역에 추가 (기존 ai_상세페이지_생성 대체 가능)
+  3. TAB2 블록               → 기존 'with 탭2:' 블록 전체와 교체
+"""
 
-        def ai_상세페이지_생성(keyword, 소싱, 추천이유):
-            price_info = f"소싱가 {소싱['총가격']:,}원 ({소싱['출처']})" if 소싱 else "소싱가 미확인"
-            img_url = 소싱.get('이미지', '') if 소싱 else ''
-            img_content = []
-            if img_url:
-                try:
-                    r = requests.get(img_url, timeout=10)
-                    if r.status_code == 200:
-                        ct = r.headers.get('Content-Type', 'image/jpeg')
-                        mt = 'image/png' if 'png' in ct else 'image/gif' if 'gif' in ct else 'image/webp' if 'webp' in ct else 'image/jpeg'
-                        b64 = base64.b64encode(r.content).decode('utf-8')
-                        img_content = [{"type": "image", "source": {"type": "base64", "media_type": mt, "data": b64}}]
-                except:
-                    pass
+# ── 1. HTML 상세페이지 빌더 ────────────────────────────────────────────────
 
-            prompt = f"""당신은 매출을 10배 올려주는 이커머스 카피라이터입니다.
+def generate_html_detail_page(keyword, sourcing, reason, ocean_grade, ai_content):
+    import re
+    price_str  = f"{sourcing['총가격']:,}원" if sourcing else "미확인"
+    origin_str = sourcing['출처']            if sourcing else "-"
+    link_str   = sourcing.get('링크', '#')   if sourcing else '#'
+    img_str    = sourcing.get('이미지', '')  if sourcing else ''
+    today      = datetime.now().strftime('%Y년 %m월 %d일')
+    ocean_color = "#00ff88" if "블루" in ocean_grade else "#ffd700" if "중간" in ocean_grade else "#ff4b4b"
+
+    # 마크다운 → HTML 간이 변환
+    body = ai_content
+    body = re.sub(r'### (.+)',      r'<h3>\1</h3>', body)
+    body = re.sub(r'## (.+)',       r'<h2>\1</h2>', body)
+    body = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', body)
+    body = re.sub(r'^\* (.+)',      r'<li>\1</li>', body, flags=re.MULTILINE)
+    body = body.replace('\n\n', '</p><p>').replace('\n', '<br>')
+
+    img_tag = (
+        f'<img src="{img_str}" alt="{keyword}">'
+        if img_str
+        else '<div class="img-placeholder">📦</div>'
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>👑 위탁의왕 — {keyword} 상세페이지 기획안</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700;900&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+:root {{
+  --gold:{ocean_color};--gold-dim:rgba(255,215,0,.12);
+  --bg:#07080f;--bg2:#0d1117;--text:#e8eaf0;--dim:#8892a4;
+  --card:rgba(255,255,255,.04);--border:rgba(255,255,255,.07);
+}}
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-serif;line-height:1.8;overflow-x:hidden}}
+body::before{{content:'';position:fixed;inset:0;z-index:0;
+  background:radial-gradient(ellipse 80% 50% at 20% 10%,rgba(255,215,0,.06),transparent 60%),
+             radial-gradient(ellipse 60% 40% at 80% 80%,rgba(0,255,136,.04),transparent 60%);
+  pointer-events:none}}
+@keyframes float{{0%,100%{{transform:translateY(0)}}50%{{transform:translateY(-8px)}}}}
+@keyframes fadeUp{{from{{opacity:0;transform:translateY(20px)}}to{{opacity:1;transform:translateY(0)}}}}
+.fu{{animation:fadeUp .6s ease both}}
+.fu:nth-child(2){{animation-delay:.1s}}.fu:nth-child(3){{animation-delay:.2s}}
+.fu:nth-child(4){{animation-delay:.3s}}.fu:nth-child(5){{animation-delay:.4s}}
+
+header{{position:relative;z-index:10;padding:60px 40px 40px;
+  border-bottom:1px solid var(--border);text-align:center;
+  background:linear-gradient(180deg,rgba(255,215,0,.05),transparent)}}
+.crown{{font-size:3rem;display:block;margin-bottom:10px;animation:float 3s ease-in-out infinite}}
+header h1{{font-family:'Noto Serif KR',serif;font-size:clamp(2rem,5vw,3.5rem);
+  font-weight:900;color:{ocean_color};text-shadow:0 0 40px {ocean_color}44;letter-spacing:-1px;line-height:1.2}}
+header .sub{{margin-top:12px;color:var(--dim);font-size:.95rem;letter-spacing:2px;text-transform:uppercase}}
+
+.meta{{position:relative;z-index:10;display:flex;flex-wrap:wrap;gap:12px;
+  justify-content:center;padding:28px 40px;border-bottom:1px solid var(--border)}}
+.badge{{display:flex;align-items:center;gap:8px;padding:10px 20px;border-radius:100px;
+  font-size:.88rem;font-weight:700;border:1px solid var(--border);background:var(--card);transition:transform .2s}}
+.badge:hover{{transform:translateY(-2px)}}
+.b-ocean{{border-color:{ocean_color}55;color:{ocean_color};background:{ocean_color}11}}
+.b-price{{border-color:#00b4d855;color:#00b4d8;background:#00b4d811}}
+.b-src{{border-color:rgba(255,215,0,.3);color:#ffd700;background:var(--gold-dim)}}
+.b-date{{color:var(--dim)}}
+
+main{{position:relative;z-index:10;max-width:960px;margin:0 auto;padding:50px 24px 80px}}
+
+.img-card{{display:flex;gap:30px;align-items:flex-start;
+  background:var(--card);border:1px solid var(--border);border-radius:20px;padding:28px;
+  margin-bottom:40px;transition:border-color .3s}}
+.img-card:hover{{border-color:rgba(255,215,0,.2)}}
+.img-card img{{width:180px;height:180px;object-fit:cover;border-radius:12px;flex-shrink:0}}
+.img-placeholder{{width:180px;height:180px;border-radius:12px;
+  background:linear-gradient(135deg,#1a2a3a,#0d1b2a);display:flex;align-items:center;
+  justify-content:center;font-size:3rem;flex-shrink:0;border:1px dashed var(--border)}}
+.img-info h2{{font-family:'Noto Serif KR',serif;font-size:1.5rem;font-weight:700;color:#ffd700;margin-bottom:10px}}
+.img-info p{{color:var(--dim);font-size:.9rem;line-height:1.7}}
+.src-btn{{display:inline-block;margin-top:16px;padding:10px 24px;border-radius:8px;
+  background:linear-gradient(45deg,#03C75A,#029f47);color:#fff;font-weight:700;font-size:.9rem;
+  text-decoration:none;box-shadow:0 4px 15px rgba(3,199,90,.3);transition:all .2s}}
+.src-btn:hover{{background:linear-gradient(45deg,#ffd700,#ffb900);color:#032d19;
+  box-shadow:0 6px 20px rgba(255,215,0,.3);transform:translateY(-2px)}}
+
+.reason{{background:linear-gradient(135deg,rgba(0,180,216,.08),rgba(0,255,136,.05));
+  border:1px solid rgba(0,180,216,.2);border-radius:12px;padding:20px 24px;margin-bottom:24px;
+  font-size:1rem;color:#a8eeff;line-height:1.7}}
+.reason span{{font-weight:700;color:#00b4d8}}
+
+.section{{background:var(--card);border:1px solid var(--border);border-radius:16px;
+  padding:32px 36px;margin-bottom:24px;transition:border-color .3s,transform .2s}}
+.section:hover{{border-color:rgba(255,215,0,.15);transform:translateY(-2px)}}
+.lbl{{font-size:.75rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;
+  color:#ffd700;margin-bottom:16px;opacity:.8}}
+.section h2{{font-family:'Noto Serif KR',serif;font-size:1.3rem;font-weight:700;color:var(--text);
+  margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:12px}}
+.ai-body h2{{color:#a8d8ff;font-size:1.1rem;border:none;padding:0;margin-top:18px}}
+.ai-body h3{{color:#ffd700;font-size:1rem}}
+.ai-body p{{color:var(--dim);font-size:.95rem;margin-bottom:10px}}
+.ai-body li{{color:var(--dim);font-size:.95rem;margin:6px 0 6px 20px;list-style:none;position:relative}}
+.ai-body li::before{{content:'▸';position:absolute;left:-16px;color:#ffd700;font-size:.8rem}}
+.ai-body strong{{color:var(--text)}}
+
+footer{{position:relative;z-index:10;text-align:center;padding:40px;
+  border-top:1px solid var(--border);color:var(--dim);font-size:.82rem}}
+footer strong{{color:#ffd700}}
+
+@media(max-width:600px){{
+  .img-card{{flex-direction:column}}
+  .img-card img,.img-placeholder{{width:100%;height:200px}}
+  header{{padding:40px 20px 30px}}
+  main{{padding:30px 16px 60px}}
+  .section{{padding:24px 20px}}
+}}
+</style>
+</head>
+<body>
+<header class="fu">
+  <span class="crown">👑</span>
+  <h1>{keyword}</h1>
+  <p class="sub">위탁의왕 AI 상세페이지 기획안 · {today}</p>
+</header>
+
+<div class="meta fu">
+  <div class="badge b-ocean">📊 {ocean_grade}</div>
+  <div class="badge b-price">💰 소싱가 {price_str}</div>
+  <div class="badge b-src">🏪 {origin_str}</div>
+  <div class="badge b-date">📅 {today}</div>
+</div>
+
+<main>
+  <div class="img-card fu">
+    {img_tag}
+    <div class="img-info">
+      <h2>소싱 상품 정보</h2>
+      <p><strong>키워드:</strong> {keyword}</p>
+      <p><strong>최저 소싱가:</strong> {price_str} ({origin_str})</p>
+      <p><strong>경쟁 강도:</strong> {ocean_grade}</p>
+      <a href="{link_str}" target="_blank" class="src-btn">🛒 소싱처 바로가기</a>
+    </div>
+  </div>
+
+  <div class="reason fu">
+    <span>💡 AI 추천 이유 —</span> {reason}
+  </div>
+
+  <div class="section fu">
+    <div class="lbl">AI Generated · Claude Sonnet</div>
+    <h2>📄 상세페이지 기획안 전문</h2>
+    <div class="ai-body"><p>{body}</p></div>
+  </div>
+</main>
+
+<footer>
+  Generated by <strong>👑 위탁의왕 Ultra</strong> · Powered by Claude AI · {today}
+</footer>
+</body>
+</html>"""
+
+
+# ── 2. 통합 생성 + 파일 저장 함수 ──────────────────────────────────────────
+
+def ai_상세페이지_생성_및_저장(keyword, sourcing, reason, ocean_grade, idx):
+    import re, os
+
+    price_info = f"소싱가 {sourcing['총가격']:,}원 ({sourcing['출처']})" if sourcing else "소싱가 미확인"
+    img_url    = sourcing.get('이미지', '') if sourcing else ''
+
+    img_content = []
+    if img_url:
+        try:
+            r = requests.get(img_url, timeout=10)
+            if r.status_code == 200:
+                ct = r.headers.get('Content-Type', 'image/jpeg')
+                mt = ('image/png'  if 'png'  in ct else
+                      'image/gif'  if 'gif'  in ct else
+                      'image/webp' if 'webp' in ct else 'image/jpeg')
+                b64_img = base64.b64encode(r.content).decode('utf-8')
+                img_content = [{"type": "image",
+                                 "source": {"type": "base64", "media_type": mt, "data": b64_img}}]
+        except Exception:
+            pass
+
+    prompt = f"""당신은 매출을 10배 올려주는 이커머스 카피라이터입니다.
 {'첨부 이미지를 분석하고' if img_content else '아래 정보를 바탕으로'} 스마트스토어 상세페이지 기획안을 작성하세요.
 
 [상품 정보]
 - 키워드: {keyword}
 - {price_info}
-- 추천 이유: {추천이유}
+- 추천 이유: {reason}
 
 ### 🏷️ 상품 타이틀 후보 3가지
 ### 💡 핵심 셀링포인트 3가지
@@ -943,81 +1200,21 @@ elif 메뉴 == "💎 블루오션 탐지 + 🤖 자동추천":
 ### 🎯 추천 검색 키워드 10개
 ### 💰 가격 전략"""
 
-            body = {"max_tokens": 2000, "messages": [{"role": "user", "content": img_content + [{"type": "text", "text": prompt}]}]}
-            return call_claude_api(body)
+    body = {"max_tokens": 2000,
+            "messages": [{"role": "user",
+                           "content": img_content + [{"type": "text", "text": prompt}]}]}
+    ai_text = call_claude_api(body)
+    if not ai_text:
+        return None, None, None
 
-        if st.button("🚀 AI 자동 분석 시작 — 오늘의 황금 상품 사냥", type="primary", use_container_width=True, key="btn_auto_daily"):
+    html_str  = generate_html_detail_page(keyword, sourcing, reason, ocean_grade, ai_text)
+    safe_name = re.sub(r'[^\w가-힣]', '_', keyword)
+    date_str  = datetime.now().strftime('%Y%m%d')
+    filename  = f"상세페이지_{date_str}_{idx+1:02d}_{safe_name}.html"
+    save_dir  = "상세페이지_저장"
+    os.makedirs(save_dir, exist_ok=True)
+    filepath  = os.path.join(save_dir, filename)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(html_str)
 
-            결과_목록 = []
-
-            st.markdown("### 🧠 STEP 1 — AI 트렌드 분석")
-            with st.spinner("Claude AI가 블루오션 키워드 분석 중..."):
-                키워드목록 = ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수)
-            if not 키워드목록:
-                st.error("키워드 생성 실패. 다시 시도해주세요.")
-                st.stop()
-            st.success(f"✅ {len(키워드목록)}개 키워드 생성 완료!")
-
-            오늘 = datetime.now().strftime('%Y-%m-%d')
-            이력_저장(오늘, [item['keyword'] for item in 키워드목록])
-
-            st.markdown("### 📊 STEP 2 — 네이버 경쟁강도 분석")
-            키워드목록 = 경쟁강도_필터(키워드목록)
-
-            st.markdown("### 💎 STEP 3 — 소싱 & 상세페이지 자동 생성")
-            tg_msg = f"👑 <b>오늘의 위탁왕 자동추천</b> ({datetime.now().strftime('%Y-%m-%d')})\n\n"
-
-            for idx, item in enumerate(키워드목록):
-                kw_item = item['keyword']
-                icon = '🟢' if item['score'] == '상' else '🟡' if item['score'] == '중' else '🔴'
-
-                with st.expander(f"{icon} #{idx+1} [{item['ocean']}] **{kw_item}** — 경쟁상품 {item['total_count']:,}개", expanded=(idx == 0)):
-                    col_a, col_b = st.columns([2, 1])
-                    with col_a:
-                        st.markdown(f"**추천 이유:** {item['reason']}")
-                        st.markdown(f"**예상 가격대:** {item['price_range']}")
-                        st.markdown(f"**경쟁 강도:** {item['ocean']} ({item['total_count']:,}개)")
-                    with col_b:
-                        with st.spinner("최저가 소싱 확인 중..."):
-                            소싱 = 소싱데이터_조회(kw_item)
-                        if 소싱:
-                            st.metric("최저 소싱가", f"{소싱['총가격']:,}원")
-                            st.caption(f"출처: {소싱['출처']}")
-                            if 소싱.get('이미지'):
-                                st.image(소싱['이미지'], width=120, caption="소싱 이미지")
-                            st.link_button("소싱처 바로가기 →", 소싱['링크'])
-                        else:
-                            st.warning("소싱 데이터 없음")
-
-                    st.divider()
-                    with st.spinner(f"'{kw_item}' 상세페이지 생성 중..."):
-                        상세 = ai_상세페이지_생성(kw_item, 소싱, item['reason'])
-
-                    if 상세:
-                        st.markdown("#### 📄 AI 자동 생성 상세페이지 기획안")
-                        st.markdown(상세)
-                        st.text_area("📋 복사하기 (Ctrl+A → Ctrl+C)", value=상세, height=180, key=f"copy_{idx}")
-                        결과_목록.append({
-                            "keyword": kw_item, "ocean": item['ocean'],
-                            "count": item['total_count'],
-                            "소싱가": 소싱['총가격'] if 소싱 else 0,
-                            "출처": 소싱['출처'] if 소싱 else "-"
-                        })
-                        소싱가_txt = f"{소싱['총가격']:,}원 ({소싱['출처']})" if 소싱 else "미확인"
-                        tg_msg += f"{idx+1}. <b>{kw_item}</b> {item['ocean']}\n   경쟁: {item['total_count']:,}개 | 소싱가: {소싱가_txt}\n\n"
-
-            if send_tg and 결과_목록:
-                tg_msg += f"총 <b>{len(결과_목록)}개</b> 분석 완료 ✅"
-                send_telegram(tg_msg)
-                st.success("📲 텔레그램으로 결과 발송 완료!")
-
-            if 결과_목록:
-                st.divider()
-                st.markdown("### 🏆 오늘의 추천 상품 최종 요약")
-                df = pd.DataFrame([{
-                    "순위": i + 1, "상품키워드": r['keyword'], "경쟁강도": r['ocean'],
-                    "네이버경쟁수": f"{r['count']:,}개",
-                    "최저소싱가": f"{r['소싱가']:,}원" if r['소싱가'] else "미확인",
-                    "소싱출처": r['출처']
-                } for i, r in enumerate(결과_목록)])
-                st.dataframe(df, use_container_width=True, hide_index=True)
+    return ai_text, html_str, filepath
