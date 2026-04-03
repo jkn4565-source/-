@@ -136,20 +136,48 @@ def 도매꾹검색(검색어, 개수=20):
     params = {"ver":"4.1","mode":"getItemList","aid":DOMEGGOOK_API_KEY,
               "market":"dome","om":"json","kw":검색어,"sz":개수}
     try:
-        data  = requests.get(url, params=params).json()
-        items = data['domeggook']['list']['item']
-        if isinstance(items, dict): items = [items]
+        data = requests.get(url, params=params).json()
+
+        # ✅ 단계별 안전 접근
+        domeggook = data.get('domeggook', {})
+        list_data = domeggook.get('list', {})
+        
+        # list가 None이거나 item이 없는 경우 처리
+        if not list_data or 'item' not in list_data:
+            return []
+        
+        items = list_data['item']
+        
+        # item이 None인 경우
+        if items is None:
+            return []
+        
+        if isinstance(items, dict): 
+            items = [items]
+
         결과 = []
         for item in items:
-            p = int(item.get('price', 0))
-            f = int(item.get('deli',{}).get('fee', 0) or 0)
-            if item.get('deli',{}).get('who','') == 'S': f = 0
+            p = int(item.get('price', 0) or 0)
+            f = int(item.get('deli', {}).get('fee', 0) or 0)
+            if item.get('deli', {}).get('who', '') == 'S': 
+                f = 0
+            if p <= 0:  # ✅ 가격 0원 상품 제외
+                continue
             결과.append({
-                "제목": item.get('title',''), "가격": p, "배송비": f, "총가격": p+f,
-                "이미지": item.get('thumb',''), "링크": item.get('url',''), "출처": "도매꾹"
+                "제목":   item.get('title', ''),
+                "가격":   p,
+                "배송비": f,
+                "총가격": p + f,
+                "이미지": item.get('thumb', ''),
+                "링크":   item.get('url', ''),
+                "출처":   "도매꾹"
             })
         return sorted(결과, key=lambda x: x['총가격'])
-    except: return []
+
+    except Exception as e:
+        # ✅ 오류 내용을 확인할 수 있게
+        st.warning(f"도매꾹 검색 오류: {e}")
+        return []
 
 def 검색_11번가(검색어, 개수=20):
     url    = "http://openapi.11st.co.kr/openapi/OpenApiService.tmall"
