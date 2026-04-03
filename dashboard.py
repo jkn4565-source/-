@@ -507,6 +507,7 @@ st.sidebar.markdown("---")
     "🏷️ 상품명 최적화",
     "🖼️ 썸네일 메이커",
     "🔬 경쟁사 상품명 역분석",
+    "🎯 원클릭 등록 패키지",
 ], index=0)
 
 # ==========================================
@@ -1257,3 +1258,347 @@ strong{{color:#e8eaf0}}footer{{margin-top:36px;text-align:center;color:#8892a4;f
                     st.download_button("📥 분석 리포트 HTML 다운로드", data=html_report,
                         file_name=f"역분석_{rev_kw}_{datetime.now().strftime('%Y%m%d')}.html",
                         mime="text/html", use_container_width=True)
+
+# ==========================================
+# 🎯 원클릭 등록 패키지
+# ==========================================
+elif 메뉴 == "🎯 원클릭 등록 패키지":
+    st.markdown("<h1>🎯 원클릭 상품 등록 패키지</h1>", unsafe_allow_html=True)
+    st.caption("키워드 하나로 → 경쟁사 분석 · 소싱 · SEO 상품명 · 상세페이지 · 썸네일까지 자동 완성")
+
+    st.markdown("""
+    <div style="background:rgba(255,215,0,0.06);border:1px solid rgba(255,215,0,0.2);
+    border-radius:12px;padding:16px 22px;margin-bottom:20px;">
+    <b style="color:#ffd700;">🔄 자동 파이프라인 순서</b><br>
+    <span style="color:#ccc;font-size:.9rem;">
+    ① 키워드 입력 &nbsp;→&nbsp;
+    ② 경쟁사 상품명 수집·분석 &nbsp;→&nbsp;
+    ③ 소싱 최저가 조회 &nbsp;→&nbsp;
+    ④ 리뷰 분석 (선택) &nbsp;→&nbsp;
+    ⑤ 슈퍼 AI 통합 기획 &nbsp;→&nbsp;
+    ⑥ 썸네일 자동 생성 &nbsp;→&nbsp;
+    ⑦ 완성 HTML 패키지 다운로드
+    </span></div>""", unsafe_allow_html=True)
+
+    # ── 입력 영역 ─────────────────────────────────────────────────
+    pkg_kw = st.text_input("📦 등록할 상품 키워드", placeholder="예: 실리콘 얼음틀, 무선 가습기, 캠핑 랜턴", key="pkg_kw")
+
+    col_p1, col_p2, col_p3 = st.columns(3)
+    pkg_target  = col_p1.selectbox("주 타겟", ["전체","육아맘","자취생","직장인","캠퍼","시니어"], key="pkg_target")
+    pkg_price   = col_p2.selectbox("가격대", ["1만원 이하","1~3만원","3~5만원","5만원 이상"], key="pkg_price")
+    pkg_tone    = col_p3.selectbox("강조 포인트", ["가성비","프리미엄","친환경/안전","디자인/감성","기능성"], key="pkg_tone")
+
+    st.markdown("##### 💬 경쟁사 리뷰 (선택사항 — 없으면 AI가 카테고리 기반으로 추론합니다)")
+    col_r1, col_r2 = st.columns(2)
+    pkg_good = col_r1.text_area("👍 호평 리뷰", height=100, key="pkg_good",
+        placeholder="네이버/쿠팡 경쟁사 상품의 4~5점 리뷰 붙여넣기")
+    pkg_bad  = col_r2.text_area("👎 악평 리뷰", height=100, key="pkg_bad",
+        placeholder="네이버/쿠팡 경쟁사 상품의 1~3점 리뷰 붙여넣기")
+
+    if st.button("🚀 원클릭 등록 패키지 자동 생성 시작", type="primary", use_container_width=True, key="btn_pkg"):
+        if not pkg_kw.strip():
+            st.warning("상품 키워드를 입력해주세요!")
+            st.stop()
+
+        # ── STEP 1: 경쟁사 상품명 수집 ───────────────────────────
+        st.divider()
+        st.markdown("### 🔍 STEP 1 — 경쟁사 상품명 수집")
+        with st.spinner("네이버 상위 20개 상품명 수집 중..."):
+            nv = 네이버검색(pkg_kw, 개수=20)
+            comp_items  = nv.get("items", [])
+            comp_total  = nv.get("total", 0)
+            comp_titles = [it['title'].replace('<b>','').replace('</b>','') for it in comp_items]
+            comp_prices = [int(it.get('lprice', 0)) for it in comp_items]
+
+        if comp_titles:
+            st.success(f"✅ 경쟁사 {len(comp_titles)}개 수집 완료 (전체 {comp_total:,}개)")
+            with st.expander("📋 수집된 경쟁사 상품명 보기"):
+                for i, (t, p) in enumerate(zip(comp_titles, comp_prices), 1):
+                    st.markdown(f"**{i}.** {t} — <span style='color:#03C75A;'>{p:,}원</span>", unsafe_allow_html=True)
+        else:
+            st.warning("경쟁사 상품명 수집 실패 — AI 추론으로 진행합니다.")
+
+        # ── STEP 2: 소싱 최저가 조회 ─────────────────────────────
+        st.markdown("### 💰 STEP 2 — 소싱 최저가 조회")
+        with st.spinner("최저가 소싱처 탐색 중..."):
+            소싱 = 소싱데이터_조회(pkg_kw)
+
+        if 소싱:
+            qty      = 소싱.get('최소수량', 1)
+            실매입    = 소싱.get('실매입가', 소싱['총가격'])
+            col_s1, col_s2, col_s3 = st.columns(3)
+            col_s1.metric("최저 단가", f"{소싱['총가격']:,}원")
+            col_s2.metric("출처", 소싱['출처'])
+            col_s3.metric("최소수량 기준 실매입", f"{실매입:,}원")
+            if 소싱.get('이미지'):
+                st.image(소싱['이미지'], width=180, caption="소싱 이미지")
+        else:
+            st.warning("소싱 데이터 없음 — 상세페이지는 텍스트 기반으로 생성됩니다.")
+
+        # ── STEP 3: 슈퍼 AI 통합 분석 ────────────────────────────
+        st.markdown("### 🧠 STEP 3 — AI 슈퍼 통합 분석")
+
+        titles_text = "\n".join([f"{i}. {t}" for i,t in enumerate(comp_titles[:15],1)]) if comp_titles else "수집 실패"
+        price_info  = f"{소싱['총가격']:,}원 ({소싱['출처']}, 최소 {소싱.get('최소수량',1)}개)" if 소싱 else "미확인"
+        review_section = ""
+        if pkg_good.strip():
+            review_section += f"\n[경쟁사 호평 리뷰]\n{pkg_good}\n"
+        if pkg_bad.strip():
+            review_section += f"\n[경쟁사 악평 리뷰]\n{pkg_bad}\n"
+        if not review_section:
+            review_section = "\n[리뷰 없음 — 키워드와 카테고리 기반으로 고객 심리를 추론하세요]\n"
+
+        super_prompt = f"""당신은 네이버 쇼핑 SEO 전문가 + 탑티어 이커머스 카피라이터 + MD의 역할을 동시에 수행합니다.
+아래 모든 데이터를 종합 분석하여 즉시 스마트스토어에 등록 가능한 완전한 상품 기획안을 작성하세요.
+
+[📦 상품 기본 정보]
+- 키워드: {pkg_kw}
+- 주 타겟: {pkg_target}
+- 가격대: {pkg_price}
+- 강조 포인트: {pkg_tone}
+- 최저 소싱가: {price_info}
+
+[🔍 경쟁사 상위노출 상품명 {len(comp_titles)}개]
+{titles_text}
+
+[💬 경쟁사 리뷰 데이터]
+{review_section}
+
+위 모든 데이터를 반영하여 아래 형식으로 출력하세요:
+
+### 🏷️ SEO 최적 상품명 TOP 3
+(경쟁사 공통 키워드 계승 + 차별화 요소 추가, 각 100자 이내)
+
+### 🔑 경쟁사 분석 — 상위노출 핵심 패턴
+(경쟁사 상품명에서 반복되는 키워드 TOP 5와 우리가 써야 할 이유)
+
+### 🚨 고객 Pain Point & 우리의 해결책
+(리뷰 기반 또는 카테고리 추론 — 결핍 3가지 + 해결책 3가지)
+
+### 💎 핵심 셀링포인트 5가지
+(경쟁사가 못하는 것 + 고객이 원하는 것 교차점)
+
+### 📝 상단 후킹 문구 3선
+(첫 3초 안에 스크롤을 멈추게 만드는 카피)
+
+### ✅ 상품 특징 설명 (5가지)
+(구체적 스펙·소재·크기·기능 포함)
+
+### 🎯 추천 검색 키워드 15개
+(네이버 쇼핑 검색량 높은 순, 롱테일 포함)
+
+### 💰 가격 전략
+(경쟁사 가격대 분석 기반 최적 판매가 + 묶음 전략)
+
+### 📦 상세페이지 구성 순서 (7단계)
+(고객 구매 심리 흐름에 맞춘 최적 배치 순서)"""
+
+        with st.spinner("AI가 모든 데이터를 통합 분석 중... (20~30초 소요)"):
+            result = call_claude_api({"max_tokens": 3000,
+                                      "messages": [{"role":"user","content": super_prompt}]})
+
+        if not result:
+            st.error("AI 분석 실패. 다시 시도해주세요.")
+            st.stop()
+
+        st.success("✅ AI 통합 분석 완료!")
+
+        # ── STEP 4: 결과 표시 ─────────────────────────────────────
+        st.markdown("### 📋 STEP 4 — 완성 기획안")
+        st.markdown(result)
+        st.divider()
+        st.text_area("📋 텍스트 복사하기", value=result, height=200, key="pkg_copy")
+
+        # ── STEP 5: 썸네일 자동 생성 ─────────────────────────────
+        st.markdown("### 🖼️ STEP 5 — 썸네일 자동 생성")
+        thumb_img = None
+        if 소싱 and 소싱.get('이미지'):
+            with st.spinner("소싱 이미지로 썸네일 합성 중..."):
+                try:
+                    r = requests.get(소싱['이미지'], timeout=10)
+                    if r.status_code == 200:
+                        pil = Image.open(io.BytesIO(r.content)).convert("RGBA")
+                        pil = pil.resize((800, 800), Image.LANCZOS)
+
+                        # 하단 오버레이
+                        ov = Image.new("RGBA",(800,800),(0,0,0,0))
+                        od = ImageDraw.Draw(ov)
+                        for i in range(220):
+                            od.rectangle([0,800-220+i,800,801-220+i],
+                                         fill=(0,0,0,int(185*(i/220))))
+                        pil = Image.alpha_composite(pil, ov)
+                        draw = ImageDraw.Draw(pil)
+
+                        # 상품명 첫 줄을 메인 텍스트로
+                        first_line = result.split('\n')[0].replace('#','').strip()[:20] if result else pkg_kw
+                        try:
+                            fm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
+                            fs = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+                        except:
+                            fm = fs = ImageFont.load_default()
+
+                        bb = draw.textbbox((0,0), pkg_kw[:16], font=fm)
+                        draw.text(((800-(bb[2]-bb[0]))//2, 620), pkg_kw[:16], font=fm, fill=(255,215,0))
+
+                        price_txt = f"소싱가 {소싱['총가격']:,}원" if 소싱 else ""
+                        if price_txt:
+                            bb2 = draw.textbbox((0,0), price_txt, font=fs)
+                            draw.text(((800-(bb2[2]-bb2[0]))//2, 675), price_txt, font=fs, fill=(3,199,90))
+
+                        thumb_img = pil.convert("RGB")
+                        st.image(thumb_img, width=300, caption="자동 생성된 썸네일")
+                except Exception as e:
+                    st.warning(f"썸네일 자동 생성 실패: {e}")
+        else:
+            st.info("💡 소싱 이미지가 없어 썸네일을 건너뜁니다. 썸네일 메이커 메뉴를 이용해주세요.")
+
+        # ── STEP 6: HTML 패키지 생성 + 다운로드 ──────────────────
+        st.markdown("### 📥 STEP 6 — 완성 패키지 다운로드")
+        today_str   = datetime.now().strftime('%Y년 %m월 %d일')
+        safe_kw     = re.sub(r'[^\w가-힣]','_', pkg_kw)
+        result_html = result
+        result_html = re.sub(r'### (.+)',       r'<h3>\1</h3>', result_html)
+        result_html = re.sub(r'## (.+)',        r'<h2>\1</h2>', result_html)
+        result_html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', result_html)
+        result_html = re.sub(r'^\* (.+)',       r'<li>\1</li>', result_html, flags=re.MULTILINE)
+        result_html = result_html.replace('\n\n','</p><p>').replace('\n','<br>')
+
+        sourcing_html = ""
+        if 소싱:
+            img_html = f'<img src="{소싱["이미지"]}" style="width:160px;height:160px;object-fit:cover;border-radius:10px;flex-shrink:0;">' if 소싱.get("이미지") else ""
+            sourcing_html = f"""
+            <div style="display:flex;gap:20px;align-items:center;background:rgba(3,199,90,.08);
+            border:1px solid rgba(3,199,90,.2);border-radius:12px;padding:20px;margin-bottom:24px;">
+            {img_html}
+            <div>
+                <div style="color:#03C75A;font-size:1.4rem;font-weight:800;margin-bottom:6px;">
+                    단가 {소싱['총가격']:,}원</div>
+                <div style="color:#8892a4;font-size:.9rem;">출처: {소싱['출처']}</div>
+                <div style="color:#ffd700;font-size:.9rem;margin-top:4px;">
+                    최소 {소싱.get('최소수량',1)}개 · 실매입 {소싱.get('실매입가', 소싱['총가격']):,}원</div>
+                <a href="{소싱['링크']}" target="_blank" style="display:inline-block;margin-top:10px;
+                padding:8px 18px;border-radius:7px;background:linear-gradient(45deg,#03C75A,#029f47);
+                color:#fff;font-weight:700;text-decoration:none;font-size:.88rem;">🛒 소싱처 바로가기</a>
+            </div></div>"""
+
+        html_pkg = f"""<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>👑 {pkg_kw} — 원클릭 등록 패키지</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@700;900&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:#07080f;color:#e8eaf0;font-family:'Noto Sans KR',sans-serif;line-height:1.8}}
+body::before{{content:'';position:fixed;inset:0;z-index:0;
+  background:radial-gradient(ellipse 80% 50% at 20% 10%,rgba(255,215,0,.06),transparent 60%),
+             radial-gradient(ellipse 60% 40% at 80% 80%,rgba(3,199,90,.04),transparent 60%);
+  pointer-events:none}}
+@keyframes fu{{from{{opacity:0;transform:translateY(16px)}}to{{opacity:1;transform:translateY(0)}}}}
+.fu{{animation:fu .6s ease both}}
+header{{position:relative;z-index:1;padding:56px 40px 36px;text-align:center;
+  border-bottom:1px solid rgba(255,255,255,.07);
+  background:linear-gradient(180deg,rgba(255,215,0,.06),transparent)}}
+header h1{{font-family:'Noto Serif KR',serif;font-size:clamp(1.8rem,4vw,3rem);
+  font-weight:900;color:#ffd700;text-shadow:0 0 40px rgba(255,215,0,.35);letter-spacing:-1px}}
+header .sub{{margin-top:10px;color:#8892a4;font-size:.9rem;letter-spacing:2px}}
+.steps{{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
+  padding:22px 30px;border-bottom:1px solid rgba(255,255,255,.07)}}
+.step{{padding:6px 16px;border-radius:20px;font-size:.82rem;font-weight:700;
+  background:rgba(255,215,0,.1);border:1px solid rgba(255,215,0,.25);color:#ffd700}}
+main{{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:40px 24px 80px}}
+.card{{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+  border-radius:16px;padding:28px 32px;margin-bottom:20px;transition:border-color .3s}}
+.card:hover{{border-color:rgba(255,215,0,.15)}}
+.card-label{{font-size:.72rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;
+  color:#ffd700;margin-bottom:14px;opacity:.8}}
+.card h2{{font-family:'Noto Serif KR',serif;font-size:1.2rem;color:#e8eaf0;
+  margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.07)}}
+h3{{color:#ffd700;font-size:1rem;margin:18px 0 8px}}
+h2{{color:#a8d8ff!important;font-size:1.05rem;margin:20px 0 8px}}
+p{{color:#8892a4;font-size:.93rem;margin-bottom:8px}}
+li{{color:#8892a4;font-size:.93rem;margin:5px 0 5px 20px;list-style:none;position:relative}}
+li::before{{content:'▸';position:absolute;left:-16px;color:#ffd700;font-size:.8rem}}
+strong{{color:#e8eaf0}}
+.comp-list{{display:flex;flex-direction:column;gap:6px}}
+.comp-item{{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);
+  border-radius:8px;padding:8px 14px;font-size:.85rem;color:#ccc}}
+.comp-item span{{color:#03C75A;font-weight:700;margin-left:8px}}
+footer{{position:relative;z-index:1;text-align:center;padding:36px;
+  border-top:1px solid rgba(255,255,255,.05);color:#8892a4;font-size:.8rem}}
+footer strong{{color:#ffd700}}
+@media(max-width:600px){{main{{padding:24px 16px 60px}}.card{{padding:20px 18px}}}}
+</style></head><body>
+<header class="fu">
+  <h1>👑 {pkg_kw}</h1>
+  <p class="sub">원클릭 등록 패키지 · {today_str} · 위탁의왕 Ultra</p>
+</header>
+<div class="steps">
+  <div class="step">📦 소싱 정보</div>
+  <div class="step">🔍 경쟁사 분석</div>
+  <div class="step">🧠 AI 통합 기획</div>
+  <div class="step">🏷️ SEO 상품명</div>
+  <div class="step">📝 상세페이지</div>
+  <div class="step">🎯 키워드 15개</div>
+  <div class="step">💰 가격 전략</div>
+</div>
+<main>
+  {sourcing_html}
+  <div class="card fu">
+    <div class="card-label">경쟁사 분석 · {len(comp_titles)}개 수집</div>
+    <h2>🔍 네이버 상위 경쟁사 상품명</h2>
+    <div class="comp-list">
+      {''.join([f'<div class="comp-item"><b>{i}.</b> {t}<span>{p:,}원</span></div>' for i,(t,p) in enumerate(zip(comp_titles[:10], comp_prices[:10]),1)])}
+    </div>
+  </div>
+  <div class="card fu">
+    <div class="card-label">AI Generated · Claude Sonnet · 통합 분석</div>
+    <h2>📋 상품 등록 기획안 전문</h2>
+    <p>{result_html}</p>
+  </div>
+</main>
+<footer>Generated by <strong>👑 위탁의왕 Ultra</strong> · Powered by Claude AI · {today_str}</footer>
+</body></html>"""
+
+        # HTML 다운로드
+        col_d1, col_d2 = st.columns(2)
+        with col_d1:
+            st.download_button(
+                "📥 완성 패키지 HTML 다운로드",
+                data=html_pkg,
+                file_name=f"등록패키지_{safe_kw}_{datetime.now().strftime('%Y%m%d')}.html",
+                mime="text/html",
+                use_container_width=True,
+                type="primary"
+            )
+        # 썸네일 다운로드
+        if thumb_img:
+            buf = io.BytesIO()
+            thumb_img.save(buf, format="JPEG", quality=95)
+            buf.seek(0)
+            with col_d2:
+                st.download_button(
+                    "🖼️ 썸네일 다운로드 (800×800)",
+                    data=buf.getvalue(),
+                    file_name=f"썸네일_{safe_kw}_{datetime.now().strftime('%Y%m%d')}.jpg",
+                    mime="image/jpeg",
+                    use_container_width=True
+                )
+
+        # 서버 저장
+        save_dir = "등록패키지_저장"
+        os.makedirs(save_dir, exist_ok=True)
+        pkg_path = os.path.join(save_dir, f"등록패키지_{safe_kw}_{datetime.now().strftime('%Y%m%d%H%M')}.html")
+        with open(pkg_path, 'w', encoding='utf-8') as f:
+            f.write(html_pkg)
+        st.success(f"✅ 서버 저장 완료: `{pkg_path}`")
+
+        st.markdown("""
+        <div style="background:rgba(3,199,90,.08);border:1px solid rgba(3,199,90,.2);
+        border-radius:10px;padding:14px 18px;margin-top:16px;">
+        <b style="color:#03C75A;">💡 다음 단계 활용 가이드</b><br>
+        <span style="color:#ccc;font-size:.9rem;">
+        1. HTML 파일을 열어 <b>SEO 상품명 TOP 3</b> 중 하나를 스마트스토어 상품명으로 사용<br>
+        2. <b>추천 검색 키워드 15개</b>를 스마트스토어 검색태그에 입력<br>
+        3. <b>상세페이지 구성 순서 7단계</b>대로 이미지 제작<br>
+        4. 다운로드한 <b>썸네일</b>을 대표이미지로 바로 업로드
+        </span></div>""", unsafe_allow_html=True)
