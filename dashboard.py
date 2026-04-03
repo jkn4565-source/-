@@ -2021,10 +2021,106 @@ footer strong{{color:#ffd700}}
 
         # STEP 5: 썸네일
         st.markdown("### 🖼️ STEP 5 — 썸네일")
-        if out.get('thumb_bytes'):
-            st.image(out['thumb_bytes'], width=300, caption="자동 생성된 썸네일")
+
+        # ── 현재 썸네일 표시 ─────────────────────────────────────
+        current_thumb = st.session_state['pkg_outputs'].get('thumb_bytes')
+        if current_thumb:
+            st.image(current_thumb, width=300, caption="현재 썸네일")
         else:
-            st.info("💡 소싱 이미지가 없어 썸네일을 건너뜁니다. 썸네일 메이커 메뉴를 이용해주세요.")
+            st.info("💡 소싱 이미지가 없어 자동 썸네일을 건너뜁니다.")
+
+        # ── 이미지 교체 기능 ──────────────────────────────────────
+        st.markdown("""<div style="background:rgba(255,215,0,.06);border:1px solid rgba(255,215,0,.2);
+        border-radius:10px;padding:12px 18px;margin:12px 0;">
+        <b style="color:#ffd700;">🔄 다른 이미지로 썸네일 교체</b><br>
+        <span style="color:#aaa;font-size:.85rem;">
+        원하는 사진을 업로드하면 배지·상품명·소싱가 텍스트를 동일하게 합성해서 새 썸네일을 만들어드립니다.
+        </span></div>""", unsafe_allow_html=True)
+
+        col_up1, col_up2 = st.columns([2, 1])
+        with col_up1:
+            new_img_file = st.file_uploader(
+                "📷 교체할 이미지 업로드 (JPG/PNG)",
+                type=["jpg","jpeg","png"],
+                key="pkg_thumb_replace"
+            )
+        with col_up2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            # 배지 옵션
+            add_badge = st.checkbox("배지 추가", value=True, key="pkg_thumb_badge")
+            badge_txt = st.text_input("배지 문구", value="가성비 1위", key="pkg_thumb_badge_txt") if add_badge else ""
+
+        if new_img_file:
+            try:
+                pil_new = Image.open(io.BytesIO(new_img_file.getvalue())).convert("RGBA")
+                pil_new = pil_new.resize((800,800), Image.LANCZOS)
+
+                # 하단 어두운 오버레이
+                ov  = Image.new("RGBA",(800,800),(0,0,0,0))
+                od  = ImageDraw.Draw(ov)
+                for idx_i in range(220):
+                    od.rectangle([0,800-220+idx_i,800,801-220+idx_i],
+                                 fill=(0,0,0,int(185*(idx_i/220))))
+                pil_new = Image.alpha_composite(pil_new, ov)
+                draw    = ImageDraw.Draw(pil_new)
+
+                try:
+                    fm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
+                    fs = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+                    fb = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
+                except:
+                    fm = fs = fb = ImageFont.load_default()
+
+                # 배지 (좌상단)
+                if add_badge and badge_txt:
+                    bw, bh = 200, 48
+                    draw.rounded_rectangle([16,16,16+bw,16+bh], radius=10, fill=(255,215,0))
+                    bb = draw.textbbox((0,0), badge_txt, font=fb)
+                    tw, th = bb[2]-bb[0], bb[3]-bb[1]
+                    draw.text((16+(bw-tw)//2, 16+(bh-th)//2), badge_txt, font=fb, fill=(3,30,10))
+
+                # 상품명 + 소싱가
+                kw_label = out['effective_kw'][:16]
+                bb = draw.textbbox((0,0), kw_label, font=fm)
+                draw.text(((800-(bb[2]-bb[0]))//2, 620), kw_label, font=fm, fill=(255,215,0))
+
+                out_소싱 = st.session_state['pkg_outputs']
+                price_txt = f"소싱가 {out['result'][:10]}" if out.get('result') else ""
+                # 소싱가를 session_state에서 안전하게 가져오기
+                if out.get('html_pkg'):
+                    pm = re.search(r'단가\s*([\d,]+)원', out['html_pkg'])
+                    if pm: price_txt = f"소싱가 {pm.group(1)}원"
+                if price_txt:
+                    bb2 = draw.textbbox((0,0), price_txt, font=fs)
+                    draw.text(((800-(bb2[2]-bb2[0]))//2, 675), price_txt, font=fs, fill=(3,199,90))
+
+                new_thumb_rgb = pil_new.convert("RGB")
+                new_buf = io.BytesIO()
+                new_thumb_rgb.save(new_buf, format="JPEG", quality=95)
+                new_thumb_bytes = new_buf.getvalue()
+
+                # 미리보기 + 저장 버튼
+                col_pv1, col_pv2 = st.columns([1,1])
+                with col_pv1:
+                    st.image(new_thumb_bytes, width=280, caption="새 썸네일 미리보기")
+                with col_pv2:
+                    st.markdown("<br><br>", unsafe_allow_html=True)
+                    if st.button("✅ 이 썸네일로 교체 저장", type="primary",
+                                 use_container_width=True, key="btn_replace_thumb"):
+                        st.session_state['pkg_outputs']['thumb_bytes'] = new_thumb_bytes
+                        st.success("✅ 썸네일이 교체됐습니다! 아래에서 다운로드하세요.")
+                        st.rerun()
+
+                    st.download_button(
+                        "⬇️ 새 썸네일 바로 다운로드",
+                        data=new_thumb_bytes,
+                        file_name=f"썸네일_교체_{out['safe_kw']}.jpg",
+                        mime="image/jpeg",
+                        use_container_width=True,
+                        key="dl_new_thumb"
+                    )
+            except Exception as e:
+                st.error(f"이미지 처리 오류: {e}")
 
         # STEP 6: 다운로드 (session_state에서 읽어서 재실행 후에도 버튼 유지)
         st.markdown("### 📥 STEP 6 — 완성 패키지 다운로드")
