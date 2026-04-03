@@ -763,41 +763,249 @@ elif 메뉴 == "🏪 상품 등록 도우미":
             st.text_area("📋 복사하기 (Ctrl+A로 전체 선택)", value=st.session_state['helper_generated_text'], height=300, key="txt_area_desc")
 
 # ==========================================
-# --- [Menu 6] 경쟁사 리뷰 분석기 ---
+# --- [Menu 6] 경쟁사 리뷰 분석기 (업그레이드) ---
 # ==========================================
+# 기존 app.py에서 아래 줄부터 시작하는 블록 전체를 교체하세요:
+# elif 메뉴 == "🕵️‍♂️ 경쟁사 리뷰 분석기":
+#   ...
+# (다음 elif 메뉴 == 직전까지)
+
 elif 메뉴 == "🕵️‍♂️ 경쟁사 리뷰 분석기":
-    st.markdown("<h1>🕵️‍♂️ AI 경쟁사 리뷰 분석기 (Pain Point 스캐너)</h1>", unsafe_allow_html=True)
-    st.caption("경쟁사의 1~3점짜리 악플은 우리에게 황금 같은 매출 소스입니다.")
+    st.markdown("<h1>🕵️‍♂️ AI 경쟁사 리뷰 분석기 (Full Spectrum)</h1>", unsafe_allow_html=True)
+    st.caption("경쟁사의 칭찬은 우리가 반드시 갖춰야 할 기준이고, 불만은 우리가 치고 들어갈 틈새입니다.")
+
     with st.container():
+
+        # ── 입력 영역 ──────────────────────────────────────────────
         st.markdown("### 1단계: 경쟁사 리뷰 가져오기")
-        st.info("💡 네이버/쿠팡 등에서 1등 경쟁사의 안 좋은 평점 리뷰를 복사해서 붙여넣어 주세요.")
-        reviews_text = st.text_area("👇 여기에 리뷰를 텍스트로 붙여넣으세요", height=200,
-                                    placeholder="예시:\n얼음틀에서 고무 냄새가 너무 많이 나요.\n뚜껑이 꽉 안 닫혀서 냉동실에 물이 다 샜어요 최악 ㅠㅠ")
-        if st.button("🔍 AI 결핍 스캔 및 후킹 카피 추출", type="primary", use_container_width=True):
-            if not reviews_text.strip():
-                st.warning("경쟁사 리뷰 내용을 먼저 붙여넣어 주세요!")
-            else:
-                with st.spinner("왕실 카피라이터가 경쟁사의 약점을 분석 중입니다..."):
-                    prompt = f"""당신은 매출을 10배 올려주는 10년 차 탑티어 이커머스 카피라이터입니다.
-아래는 경쟁사 상품에 대한 고객들의 실제 리뷰(주로 불만 사항)입니다.
+        col_tip1, col_tip2 = st.columns(2)
+        with col_tip1:
+            st.info("⭐ **호평(4~5점)** — 고객이 왜 샀는지, 어떤 점이 만족스러웠는지")
+        with col_tip2:
+            st.warning("💢 **악평(1~3점)** — 어떤 점에서 실망했는지, 반품/환불 이유")
 
-[경쟁사 리뷰 데이터]
-{reviews_text}
+        good_reviews = st.text_area(
+            "👍 호평 리뷰 붙여넣기 (4~5점)",
+            height=150,
+            key="good_reviews",
+            placeholder="예시:\n정말 편하고 디자인이 예뻐요. 선물용으로도 딱 좋아요!\n배송 빠르고 포장도 꼼꼼했어요. 재구매 의사 있어요.\n가성비 최고! 이 가격에 이 퀄리티면 충분해요."
+        )
+        bad_reviews = st.text_area(
+            "👎 악평 리뷰 붙여넣기 (1~3점)",
+            height=150,
+            key="bad_reviews",
+            placeholder="예시:\n생각보다 내구성이 약해서 금방 망가졌어요.\n사진이랑 실제 색상이 너무 달라요 속은 기분.\n AS가 안 돼서 그냥 버렸어요."
+        )
 
-[출력 형식] (절대 HTML 태그를 사용하지 말고 마크다운만 사용하세요)
+        분석모드 = st.radio(
+            "분석 모드 선택",
+            ["⚡ 풀스펙트럼 분석 (호평 + 악평 동시)", "👍 호평만 분석 (장점 부각 전략)", "👎 악평만 분석 (Pain Point 전략)"],
+            horizontal=True,
+            key="analysis_mode"
+        )
+
+        if st.button("🔍 AI 전략 분석 시작", type="primary", use_container_width=True):
+
+            # 입력 유효성 체크
+            has_good = good_reviews.strip() != ""
+            has_bad  = bad_reviews.strip() != ""
+
+            if 분석모드 == "👍 호평만 분석 (장점 부각 전략)" and not has_good:
+                st.warning("호평 리뷰를 입력해 주세요!")
+                st.stop()
+            elif 분석모드 == "👎 악평만 분석 (Pain Point 전략)" and not has_bad:
+                st.warning("악평 리뷰를 입력해 주세요!")
+                st.stop()
+            elif 분석모드 == "⚡ 풀스펙트럼 분석 (호평 + 악평 동시)" and not has_good and not has_bad:
+                st.warning("호평 또는 악평 리뷰를 하나 이상 입력해 주세요!")
+                st.stop()
+
+            # ── 모드별 프롬프트 분기 ───────────────────────────────
+            if 분석모드 == "👍 호평만 분석 (장점 부각 전략)":
+                prompt = f"""당신은 매출을 10배 올려주는 10년 차 탑티어 이커머스 카피라이터입니다.
+아래는 경쟁사 상품의 호평 리뷰입니다. 이 데이터를 분석하여 우리 상세페이지에 쓸 전략을 작성해주세요.
+
+[경쟁사 호평 리뷰]
+{good_reviews}
+
+[출력 형식] (마크다운만 사용, HTML 태그 금지)
+### ⭐ 고객이 진짜 원하는 것 TOP 3 (구매 결정 요인)
+(호평 속에서 반복되는 핵심 가치를 뽑아, 고객의 진짜 욕구를 분석)
+
+### 🏆 우리가 반드시 갖춰야 할 필수 요소
+(경쟁사가 잘하고 있는 것 — 우리도 동등하거나 더 잘해야 할 기준점)
+
+### 💎 장점을 극대화하는 상세페이지 어필 포인트 5가지
+(고객이 칭찬한 요소를 우리 상세페이지에서 더 설득력 있게 표현하는 방법)
+
+### 🎯 구매 욕구를 자극하는 후킹 카피 3선
+(호평 키워드를 기반으로 고객의 욕구를 직접 자극하는 강력한 카피)
+
+### 📣 SNS/상세페이지 리뷰 유도 문구
+(구매 후 좋은 리뷰를 자연스럽게 유도하는 문구 2가지)"""
+
+            elif 분석모드 == "👎 악평만 분석 (Pain Point 전략)":
+                prompt = f"""당신은 매출을 10배 올려주는 10년 차 탑티어 이커머스 카피라이터입니다.
+아래는 경쟁사 상품의 악평 리뷰입니다. 이 데이터를 분석하여 우리 상세페이지 공략 포인트를 짜드립니다.
+
+[경쟁사 악평 리뷰]
+{bad_reviews}
+
+[출력 형식] (마크다운만 사용, HTML 태그 금지)
 ### 🚨 고객들이 분노하는 핵심 결핍 (Pain Point) TOP 3
-### 💡 우리의 완벽한 해결책 (셀링 포인트)
-### 🎣 상세페이지 최상단 강력한 후킹 카피 3선"""
-                    result = call_claude_api({"max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]})
-                    if result:
-                        st.divider()
-                        st.markdown("## 🎯 AI 분석 및 카피라이팅 결과")
-                        st.markdown(result)
-                        st.divider()
-                        st.text_area("📋 복사하기 (Ctrl+A → Ctrl+C)", value=result, height=200)
-                    else:
-                        st.error("AI 분석 중 오류가 발생했습니다. 다시 시도해주세요.")
+(고객이 무엇 때문에 가장 불편해하는지 날카롭게 분석)
 
+### 💡 우리의 완벽한 해결책 (셀링 포인트)
+(위의 결핍을 우리는 어떻게 완벽히 해결했는지 당당하게 어필하는 소구점)
+
+### 🎣 결핍을 찌르는 강력한 후킹 카피 3선
+(고객이 '아 이건 내 얘기다!' 하고 스크롤을 내릴 수밖에 없는 카피)
+
+### ⚠️ 우리가 절대 반복하면 안 될 실수 목록
+(경쟁사가 받은 불만을 우리는 어떻게 사전에 차단할지)"""
+
+            else:  # 풀스펙트럼
+                good_section = f"[경쟁사 호평 리뷰]\n{good_reviews}" if has_good else "[경쟁사 호평 리뷰]\n(입력 없음)"
+                bad_section  = f"[경쟁사 악평 리뷰]\n{bad_reviews}"  if has_bad  else "[경쟁사 악평 리뷰]\n(입력 없음)"
+                prompt = f"""당신은 매출을 10배 올려주는 10년 차 탑티어 이커머스 카피라이터입니다.
+아래 경쟁사의 호평/악평 리뷰를 모두 분석하여 우리가 시장에서 이기기 위한 완전한 전략을 작성해주세요.
+
+{good_section}
+
+{bad_section}
+
+[출력 형식] (마크다운만 사용, HTML 태그 금지)
+
+## ✅ PART 1 — 장점 전략 (경쟁사 호평 분석)
+
+### ⭐ 고객이 진짜 원하는 것 TOP 3
+(반복되는 칭찬 키워드에서 고객의 진짜 구매 동기 도출)
+
+### 💎 장점을 극대화하는 어필 포인트 3가지
+(경쟁사가 잘하는 것을 우리는 어떻게 더 설득력 있게 표현할지)
+
+---
+
+## 🔥 PART 2 — 약점 전략 (경쟁사 악평 분석)
+
+### 🚨 고객 분노 핵심 결핍 TOP 3
+(경쟁사가 해결 못한 것 — 우리의 차별화 기회)
+
+### 💡 우리의 완벽한 해결책
+(결핍을 해결하는 우리만의 셀링 포인트)
+
+---
+
+## 👑 PART 3 — 통합 카피라이팅 전략
+
+### 🎯 최종 상세페이지 컨셉 한 줄 요약
+(장점은 계승하고 약점은 극복한 우리만의 포지셔닝)
+
+### 🎣 장점 + 약점을 동시에 공략하는 후킹 카피 3선
+(경쟁사 호평 키워드 + 악평 결핍을 동시에 찌르는 강력한 카피)
+
+### 📦 상품 상세페이지 구성 순서 추천
+(어떤 순서로 정보를 배치해야 전환율이 높을지 제안)"""
+
+            # ── API 호출 및 결과 출력 ──────────────────────────────
+            with st.spinner("왕실 카피라이터가 경쟁사를 완전히 해부하고 있습니다..."):
+                result = call_claude_api({
+                    "max_tokens": 2000,
+                    "messages": [{"role": "user", "content": prompt}]
+                })
+
+            if result:
+                st.divider()
+
+                # 모드별 헤더 색상
+                if 분석모드 == "👍 호평만 분석 (장점 부각 전략)":
+                    header_html = """<div style="padding:12px 20px; background:linear-gradient(90deg,rgba(3,199,90,.15),transparent);
+border-left:3px solid #03C75A; border-radius:8px; margin-bottom:20px;">
+<h3 style="color:#03C75A; margin:0;">✅ 장점 부각 전략 리포트</h3></div>"""
+                elif 분석모드 == "👎 악평만 분석 (Pain Point 전략)":
+                    header_html = """<div style="padding:12px 20px; background:linear-gradient(90deg,rgba(255,75,75,.15),transparent);
+border-left:3px solid #ff4b4b; border-radius:8px; margin-bottom:20px;">
+<h3 style="color:#ff4b4b; margin:0;">🔥 Pain Point 공략 리포트</h3></div>"""
+                else:
+                    header_html = """<div style="padding:12px 20px; background:linear-gradient(90deg,rgba(255,215,0,.12),transparent);
+border-left:3px solid #ffd700; border-radius:8px; margin-bottom:20px;">
+<h3 style="color:#ffd700; margin:0;">👑 풀스펙트럼 전략 리포트</h3></div>"""
+
+                st.markdown(header_html, unsafe_allow_html=True)
+                st.markdown(result)
+                st.divider()
+                st.text_area("📋 복사하기 (Ctrl+A → Ctrl+C)", value=result, height=200, key="result_copy")
+
+                # ── HTML 리포트 다운로드 ───────────────────────────
+                today_str = datetime.now().strftime('%Y년 %m월 %d일')
+                mode_label = 분석모드.split(" ")[0]
+                result_html = result
+                result_html = re.sub(r'### (.+)',       r'<h3>\1</h3>', result_html)
+                result_html = re.sub(r'## (.+)',        r'<h2>\1</h2>', result_html)
+                result_html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', result_html)
+                result_html = re.sub(r'^\* (.+)',       r'<li>\1</li>', result_html, flags=re.MULTILINE)
+                result_html = result_html.replace('\n\n', '</p><p>').replace('\n', '<br>')
+
+                html_report = f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>👑 경쟁사 리뷰 분석 리포트</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@700;900&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:#07080f;color:#e8eaf0;font-family:'Noto Sans KR',sans-serif;line-height:1.8}}
+body::before{{content:'';position:fixed;inset:0;z-index:0;
+  background:radial-gradient(ellipse 80% 50% at 10% 10%,rgba(3,199,90,.05),transparent 60%),
+             radial-gradient(ellipse 60% 40% at 90% 90%,rgba(255,215,0,.04),transparent 60%);
+  pointer-events:none}}
+header{{position:relative;z-index:1;padding:50px 40px 30px;text-align:center;
+  border-bottom:1px solid rgba(255,255,255,.07);
+  background:linear-gradient(180deg,rgba(255,215,0,.05),transparent)}}
+header h1{{font-family:'Noto Serif KR',serif;font-size:2.2rem;font-weight:900;
+  color:#ffd700;text-shadow:0 0 30px rgba(255,215,0,.3)}}
+header p{{color:#8892a4;margin-top:8px;font-size:.9rem;letter-spacing:2px}}
+main{{position:relative;z-index:1;max-width:860px;margin:0 auto;padding:40px 24px 80px}}
+.card{{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+  border-radius:16px;padding:28px 32px;margin-bottom:20px;transition:border-color .3s}}
+.card:hover{{border-color:rgba(255,215,0,.15)}}
+h2{{font-family:'Noto Serif KR',serif;font-size:1.2rem;color:#a8d8ff;
+  margin:24px 0 10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.06)}}
+h3{{font-size:1rem;color:#ffd700;margin:18px 0 8px}}
+p{{color:#8892a4;font-size:.95rem;margin-bottom:10px}}
+li{{color:#8892a4;font-size:.95rem;margin:5px 0 5px 20px;list-style:none;position:relative}}
+li::before{{content:'▸';position:absolute;left:-16px;color:#ffd700;font-size:.8rem}}
+strong{{color:#e8eaf0}}
+hr{{border:none;border-top:1px solid rgba(255,215,0,.1);margin:24px 0}}
+footer{{position:relative;z-index:1;text-align:center;padding:30px;
+  border-top:1px solid rgba(255,255,255,.05);color:#8892a4;font-size:.8rem}}
+footer strong{{color:#ffd700}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🕵️ 경쟁사 리뷰 분석 리포트</h1>
+  <p>{mode_label} 모드 · {today_str} · 위탁의왕 Ultra</p>
+</header>
+<main>
+  <div class="card">
+    <p>{result_html}</p>
+  </div>
+</main>
+<footer>Generated by <strong>👑 위탁의왕 Ultra</strong> · Powered by Claude AI</footer>
+</body>
+</html>"""
+
+                st.download_button(
+                    label="📥 분석 리포트 HTML 다운로드",
+                    data=html_report,
+                    file_name=f"경쟁사분석_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
+                    mime="text/html",
+                    use_container_width=True
+                )
+            else:
+                st.error("AI 분석 중 오류가 발생했습니다. 다시 시도해주세요.")
 # ==========================================
 # --- [Menu 7] 마진 계산기 ---
 # ==========================================
