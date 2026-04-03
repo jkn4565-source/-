@@ -329,6 +329,149 @@ def 소싱데이터_조회(keyword):
     combined = sorted(n[:5]+d[:5], key=lambda x: x['총가격'])
     return combined[0] if combined else None
 
+# ── 멀티플랫폼 가격 체크 (전역 — 재고메뉴 + 자동스케줄러 공용) ──
+PLATFORM_ICONS = {
+    "도매꾹": "🔵", "11번가": "🔴",
+    "네이버": "🟢", "G마켓":  "🟡", "옥션": "🟠",
+}
+
+def 가격체크_도매꾹(item_no):
+    try:
+        r = requests.get("https://domeggook.com/ssl/api/", timeout=10, params={
+            "ver":"4.1","aid":DOMEGGOOK_API_KEY,"market":"dome",
+            "om":"json","mode":"getItemList","itemNo":item_no}).json()
+        list_data = r.get('domeggook',{}).get('list',{})
+        if not list_data: return None, "품절"
+        it = list_data.get('item')
+        if not it: return None, "품절"
+        it = it[0] if isinstance(it, list) else it
+        return int(it.get('price', 0) or 0), "판매중"
+    except: return None, "오류"
+
+def 가격체크_URL(url, 플랫폼):
+    ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+          "AppleWebKit/537.36 (KHTML, like Gecko) "
+          "Chrome/120.0.0.0 Safari/537.36")
+    headers = {"User-Agent": ua, "Accept-Language": "ko-KR,ko;q=0.9"}
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        text = resp.text
+        patterns = [
+            r'"price"\s*:\s*"?(\d{3,8})"?',
+            r'"salePrice"\s*:\s*(\d{3,8})',
+            r'"finalPrice"\s*:\s*(\d{3,8})',
+            r'"sellingPrice"\s*:\s*(\d{3,8})',
+            r'"discountedPrice"\s*:\s*(\d{3,8})',
+            r'data-price="(\d{3,8})"',
+            r'"currentPrice"\s*:\s*(\d{3,8})',
+        ]
+        if 플랫폼 == "11번가":
+            patterns = [r'"price"\s*:\s*(\d{3,8})', r'itemprop="price"[^>]*content="(\d{3,8})"'] + patterns
+        elif 플랫폼 in ["G마켓","옥션"]:
+            patterns = [r'data-price="(\d{3,8})"', r'"itemPrice"\s*:\s*(\d{3,8})'] + patterns
+        elif 플랫폼 == "네이버":
+            patterns = [r'"wholeSalePrice"\s*:\s*(\d{3,8})', r'"benefitPrice"\s*:\s*(\d{3,8})'] + patterns
+        for pat in patterns:
+            m = re.search(pat, text)
+            if m:
+                p = int(m.group(1).replace(',',''))
+                if 500 <= p <= 9_999_999:
+                    return p, "판매중"
+        if any(k in text for k in ['품절','일시품절','soldout','SOLDOUT','판매중지']):
+            return None, "품절"
+        return None, "확인불가"
+    except: return None, "오류"
+
+# ── 자동 점검 함수 (스케줄러 + 수동 점검 공용) ──────────────────
+점검기록파일 = "자동점검기록.json"
+
+def 자동_가격체크(source="자동"):
+    재고파일_path = "재고모니터링.json"
+    if not os.path.exists(재고파일_path): return
+
+    # 중복 실행 방지 (같은 시간대에 2번 실행 안 되도록)
+    now     = datetime.now()
+    now_key = now.strftime('%Y%m%d%H')
+    if os.path.exists(점검기록파일):
+        try:
+            last = json.load(open(점검기록파일,'r',encoding='utf-8'))
+            if source == "자동" and last.get('last_key') == now_key:
+                return
+        except: pass
+    try:
+        목록 = json.load(open(재고파일_path,'r',encoding='utf-8'))
+        if not 목록: return
+        변경_내용 = []
+        for i, s in enumerate(목록):
+            플랫폼 = s.get('platform','도매꾹')
+            if 플랫폼 == "도매꾹":
+                now_p, now_st = 가격체크_도매꾹(s.get('no',''))
+            else:
+                now_p, now_st = 가격체크_URL(s['url'], 플랫폼)
+            icon = PLATFORM_ICONS.get(플랫폼,"⚪")
+            if now_p and now_p > s['price']:
+                diff = now_p - s['price']
+                send_telegram(f"🔺 <b>가격인상!</b> {icon}{플랫폼}\n📦 {s['name']}\n{s['price']:,}원 → <b>{now_p:,}원</b> (+{diff:,}원)")
+                목록[i].update({'price': now_p, '상태': "판매중"})
+                변경_내용.append(f"🔺 {s['name']}: +{diff:,}원")
+            elif now_p and now_p < s['price']:
+                diff = s['price'] - now_p
+                send_telegram(f"🔻 <b>가격인하!</b> {icon}{플랫폼}\n📦 {s['name']}\n{s['price']:,}원 → <b>{now_p:,}원</b> (-{diff:,}원)")
+                목록[i].update({'price': now_p, '상태': "판매중"})
+                변경_내용.append(f"🔻 {s['name']}: -{diff:,}원")
+            elif now_p:
+                목록[i]['상태'] = "판매중"
+            else:
+                if s['상태'] == "판매중":
+                    send_telegram(f"🚫 <b>품절/확인불가!</b> {icon}{플랫폼}\n📦 {s['name']}\n상태: {now_st}")
+                    변경_내용.append(f"🚫 {s['name']}: {now_st}")
+                목록[i]['상태'] = now_st
+
+        json.dump(목록, open(재고파일_path,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
+
+        now_str    = now.strftime('%Y-%m-%d %H:%M')
+        type_label = "⏰ 정기" if source == "자동" else "🔄 수동"
+        if 변경_내용:
+            send_telegram(f"{type_label} <b>점검 완료</b> ({now_str})\n총 {len(목록)}개 점검\n\n<b>변동 내역:</b>\n" + "\n".join(변경_내용))
+        else:
+            send_telegram(f"{type_label} <b>점검 완료</b> ({now_str})\n총 {len(목록)}개 — 변동 없음 ✅")
+
+        json.dump({'last_key': now_key, 'last_time': now_str,
+                   'count': len(목록), 'changes': len(변경_내용), 'source': source},
+                  open(점검기록파일,'w',encoding='utf-8'), ensure_ascii=False)
+    except Exception as e:
+        send_telegram(f"⚠️ <b>점검 오류</b>\n{str(e)[:200]}")
+
+# ── 백그라운드 스케줄러 (오전 11시 · 오후 2시 자동 실행) ────────
+import threading
+_SCHEDULER_RUNNING = False
+
+def _start_background_scheduler():
+    global _SCHEDULER_RUNNING
+    if _SCHEDULER_RUNNING:
+        return
+    _SCHEDULER_RUNNING = True
+
+    def _run():
+        last_ran_hour = -1
+        while True:
+            try:
+                now = datetime.now()
+                if now.hour in (11, 14) and now.minute < 3:
+                    if last_ran_hour != now.hour:
+                        last_ran_hour = now.hour
+                        자동_가격체크(source="자동")
+                elif now.hour not in (11, 14):
+                    last_ran_hour = -1   # 매 시간마다 리셋
+            except Exception:
+                pass
+            time.sleep(60)  # 1분마다 시간 확인
+
+    t = threading.Thread(target=_run, daemon=True, name="price_scheduler")
+    t.start()
+
+_start_background_scheduler()  # 앱 시작 시 1회 실행
+
 # ── HTML 상세페이지 빌더 ──────────────────────────────────────────
 def generate_html_detail_page(keyword, sourcing, reason, ocean_grade, ai_content):
     price_str  = f"{sourcing['총가격']:,}원" if sourcing else "미확인"
@@ -827,12 +970,7 @@ elif 메뉴 == "💰 마진 계산기":
 # ==========================================
 elif 메뉴 == "📦 재고/가격 알림":
     st.markdown("<h1>📦 멀티 플랫폼 가격·재고 감시</h1>", unsafe_allow_html=True)
-    st.caption("도매꾹·11번가·네이버·G마켓·옥션 상품을 한 곳에서 실시간 감시하고 텔레그램으로 알림받습니다.")
-
-    PLATFORM_ICONS = {
-        "도매꾹": "🔵", "11번가": "🔴",
-        "네이버":  "🟢", "G마켓":  "🟡", "옥션": "🟠",
-    }
+    st.caption("도매꾹·11번가·네이버·G마켓·옥션 상품을 한 곳에서 감시 · 오전 11시·오후 2시 자동 점검")
 
     def mask(cid): return cid[:3]+"****"+cid[-2:] if cid else "미등록"
     st.info(f"🔔 텔레그램 수신 ID: {mask(TELEGRAM_CHAT_ID)}")
@@ -841,86 +979,63 @@ elif 메뉴 == "📦 재고/가격 알림":
     def 로드(): return json.load(open(재고파일,'r',encoding='utf-8')) if os.path.exists(재고파일) else []
     def 저장(d): json.dump(d, open(재고파일,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
 
-    # ── 플랫폼별 가격 체크 함수 ───────────────────────────────────
-    def 가격체크_도매꾹(item_no):
-        try:
-            r = requests.get("https://domeggook.com/ssl/api/", timeout=10, params={
-                "ver":"4.1","aid":DOMEGGOOK_API_KEY,"market":"dome",
-                "om":"json","mode":"getItemList","itemNo":item_no}).json()
-            list_data = r.get('domeggook',{}).get('list',{})
-            if not list_data: return None, "품절"
-            it = list_data.get('item')
-            if not it: return None, "품절"
-            it = it[0] if isinstance(it, list) else it
-            return int(it.get('price', 0) or 0), "판매중"
-        except: return None, "오류"
+    # ── 스케줄러 상태 카드 ────────────────────────────────────────
+    now_h = datetime.now().hour
+    now_m = datetime.now().minute
+    next_run = "오전 11:00" if now_h < 11 else "오후 2:00" if now_h < 14 else "내일 오전 11:00"
 
-    def 가격체크_URL(url, 플랫폼):
-        ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-              "AppleWebKit/537.36 (KHTML, like Gecko) "
-              "Chrome/120.0.0.0 Safari/537.36")
-        headers = {"User-Agent": ua, "Accept-Language": "ko-KR,ko;q=0.9"}
-        try:
-            resp = requests.get(url, headers=headers, timeout=15)
-            text = resp.text
-            # 공통 + 플랫폼별 패턴
-            patterns = [
-                r'"price"\s*:\s*"?(\d{3,8})"?',
-                r'"salePrice"\s*:\s*(\d{3,8})',
-                r'"finalPrice"\s*:\s*(\d{3,8})',
-                r'"sellingPrice"\s*:\s*(\d{3,8})',
-                r'"discountedPrice"\s*:\s*(\d{3,8})',
-                r'data-price="(\d{3,8})"',
-                r'"currentPrice"\s*:\s*(\d{3,8})',
-                r'"originPrice"\s*:\s*(\d{3,8})',
-            ]
-            if 플랫폼 == "11번가":
-                patterns = [r'"price"\s*:\s*(\d{3,8})', r'itemprop="price"[^>]*content="(\d{3,8})"'] + patterns
-            elif 플랫폼 in ["G마켓", "옥션"]:
-                patterns = [r'data-price="(\d{3,8})"', r'"itemPrice"\s*:\s*(\d{3,8})'] + patterns
-            elif 플랫폼 == "네이버":
-                patterns = [r'"wholeSalePrice"\s*:\s*(\d{3,8})', r'"benefitPrice"\s*:\s*(\d{3,8})'] + patterns
+    last_info = {}
+    if os.path.exists(점검기록파일):
+        try: last_info = json.load(open(점검기록파일,'r',encoding='utf-8'))
+        except: pass
 
-            for pat in patterns:
-                m = re.search(pat, text)
-                if m:
-                    p = int(m.group(1).replace(',',''))
-                    if 500 <= p <= 9_999_999:
-                        return p, "판매중"
+    last_txt   = last_info.get('last_time', '아직 없음')
+    last_cnt   = last_info.get('count', 0)
+    last_chg   = last_info.get('changes', 0)
+    last_src   = last_info.get('source', '-')
+    src_icon   = "⏰" if last_src == "자동" else "🔄"
 
-            # 품절 키워드 감지
-            if any(k in text for k in ['품절','일시품절','soldout','SOLDOUT','sold-out','판매중지']):
-                return None, "품절"
-            return None, "확인불가"
-        except Exception as e:
-            return None, "오류"
-
-    목록 = 로드()
+    st.markdown(f"""
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px;">
+      <div style="background:rgba(3,199,90,.08);border:1px solid rgba(3,199,90,.25);
+      border-radius:12px;padding:16px;text-align:center;">
+        <div style="color:#03C75A;font-size:1.4rem;font-weight:800;">⏰ 자동 ON</div>
+        <div style="color:#aaa;font-size:.82rem;margin-top:4px;">오전 11:00 · 오후 2:00</div>
+      </div>
+      <div style="background:rgba(255,215,0,.07);border:1px solid rgba(255,215,0,.2);
+      border-radius:12px;padding:16px;text-align:center;">
+        <div style="color:#ffd700;font-size:1.1rem;font-weight:700;">다음 점검</div>
+        <div style="color:#ffd700;font-size:1.3rem;font-weight:800;">{next_run}</div>
+      </div>
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;padding:16px;text-align:center;">
+        <div style="color:#aaa;font-size:.82rem;">마지막 점검 {src_icon}</div>
+        <div style="color:#e8eaf0;font-size:.9rem;font-weight:700;">{last_txt}</div>
+        <div style="color:#aaa;font-size:.78rem;">{last_cnt}개 점검 · 변동 {last_chg}건</div>
+      </div>
+    </div>""", unsafe_allow_html=True)
 
     # ── 상품 추가 폼 ──────────────────────────────────────────────
     with st.expander("➕ 감시 상품 추가", expanded=True):
         선택플랫폼 = st.selectbox(
-            "플랫폼 선택",
-            list(PLATFORM_ICONS.keys()),
-            key="sel_platform",
+            "플랫폼 선택", list(PLATFORM_ICONS.keys()), key="sel_platform",
             format_func=lambda x: f"{PLATFORM_ICONS[x]} {x}"
         )
-
-        ca, cb = st.columns([3, 1])
-
+        ca, cb = st.columns([3,1])
         if 선택플랫폼 == "도매꾹":
-            st.caption("💡 도매꾹 상품 페이지 URL(domeggook.com/숫자) 또는 상품번호를 입력하세요.")
-            raw_input = ca.text_input("도매꾹 상품번호 또는 URL", placeholder="예: 13187678  또는  https://domeggook.com/13187678", key="add_dome")
-            # URL에서 번호 추출
-            item_no_val = re.search(r'(\d{5,})', raw_input)
-            item_no_val = item_no_val.group(1) if item_no_val else raw_input.strip()
+            st.caption("💡 도매꾹 상품번호 또는 URL(domeggook.com/숫자)을 입력하세요.")
+            raw_input   = ca.text_input("도매꾹 상품번호 또는 URL", key="add_dome",
+                                        placeholder="예: 13187678  또는  https://domeggook.com/13187678")
+            m_no        = re.search(r'(\d{5,})', raw_input)
+            item_no_val = m_no.group(1) if m_no else raw_input.strip()
         else:
             st.caption(f"💡 {선택플랫폼} 상품 페이지 URL을 붙여넣으세요.")
-            item_url_val = ca.text_input(f"{선택플랫폼} 상품 URL", placeholder="상품 페이지 주소를 붙여넣으세요", key="add_url")
-
-        관리명 = cb.text_input("관리 이름 (메모)", placeholder="예: 실리콘 얼음틀", key="add_name")
+            item_url_val = ca.text_input(f"{선택플랫폼} 상품 URL", key="add_url",
+                                         placeholder="상품 페이지 주소를 붙여넣으세요")
+        관리명 = cb.text_input("관리 이름", placeholder="예: 실리콘 얼음틀", key="add_name")
 
         if st.button("👑 모니터링 명단에 등록", use_container_width=True, key="btn_add_item"):
+            목록 = 로드()
             if not 관리명.strip():
                 st.warning("관리 이름을 입력해주세요!")
             else:
@@ -935,124 +1050,83 @@ elif 메뉴 == "📦 재고/가격 알림":
                         id_stored  = ""
 
                 if price_now:
-                    목록.append({
-                        "no":       id_stored,
-                        "name":     관리명.strip(),
-                        "platform": 선택플랫폼,
-                        "url":      url_stored,
-                        "price":    price_now,
-                        "상태":     status_now,
-                    })
+                    목록.append({"no": id_stored, "name": 관리명.strip(),
+                                "platform": 선택플랫폼, "url": url_stored,
+                                "price": price_now, "상태": status_now})
                     저장(목록)
-                    st.success(f"✅ 등록 완료! {PLATFORM_ICONS[선택플랫폼]} {선택플랫폼} | 현재가: **{price_now:,}원**")
+                    st.success(f"✅ {PLATFORM_ICONS[선택플랫폼]} {선택플랫폼} 등록 완료! 현재가: **{price_now:,}원**")
                     st.rerun()
                 else:
-                    st.error(f"❌ 가격 확인 실패 ({status_now})\n\nURL 또는 상품번호를 다시 확인해주세요.")
-                    if 선택플랫폼 != "도매꾹":
-                        st.info("💡 일부 플랫폼은 로그인이 필요하거나 봇 차단이 있을 수 있습니다.\n가격을 직접 입력하시겠어요?")
-                        manual_price = st.number_input("현재 가격 직접 입력 (원)", min_value=0, step=100, key="manual_p")
-                        if st.button("직접 입력으로 등록", key="btn_manual"):
-                            if manual_price > 0:
-                                목록.append({
-                                    "no": id_stored, "name": 관리명.strip(),
-                                    "platform": 선택플랫폼, "url": url_stored,
-                                    "price": manual_price, "상태": "판매중",
-                                })
-                                저장(목록)
-                                st.success("✅ 수동 등록 완료!")
-                                st.rerun()
+                    st.error(f"❌ 가격 확인 실패 ({status_now}) — URL 또는 상품번호를 확인해주세요.")
+                    manual_price = st.number_input("현재 가격 직접 입력 (원)", min_value=0, step=100, key="manual_p")
+                    if st.button("직접 입력으로 등록", key="btn_manual") and manual_price > 0:
+                        목록.append({"no": id_stored if 선택플랫폼=="도매꾹" else "",
+                                    "name": 관리명.strip(), "platform": 선택플랫폼,
+                                    "url": url_stored if 선택플랫폼!="도매꾹" else f"https://domeggook.com/{item_no_val}",
+                                    "price": manual_price, "상태": "판매중"})
+                        저장(목록); st.success("✅ 수동 등록 완료!"); st.rerun()
 
     st.divider()
 
-    # ── 전수 점검 ────────────────────────────────────────────────
-    if st.button("🔄 전수 점검 및 텔레그램 발송", type="primary", use_container_width=True):
-        if not 목록:
-            st.warning("등록된 상품이 없습니다.")
-        else:
-            bar = st.progress(0, text="전수 점검 시작...")
-            for i, s in enumerate(목록):
-                플랫폼  = s.get('platform', '도매꾹')
-                icon    = PLATFORM_ICONS.get(플랫폼, "⚪")
-                bar.progress((i+1)/len(목록), text=f"확인 중: {s['name']} ({플랫폼})")
-
-                if 플랫폼 == "도매꾹":
-                    now_p, now_st = 가격체크_도매꾹(s.get('no',''))
-                else:
-                    now_p, now_st = 가격체크_URL(s['url'], 플랫폼)
-
-                if now_p and now_p > s['price']:
-                    diff = now_p - s['price']
-                    send_telegram(
-                        f"🔺 <b>가격인상!</b> {icon} {플랫폼}\n"
-                        f"📦 {s['name']}\n"
-                        f"{s['price']:,}원 → <b>{now_p:,}원</b> (+{diff:,}원)")
-                    목록[i]['price'] = now_p
-                    목록[i]['상태']  = "판매중"
-                elif now_p and now_p < s['price']:
-                    diff = s['price'] - now_p
-                    send_telegram(
-                        f"🔻 <b>가격인하!</b> {icon} {플랫폼}\n"
-                        f"📦 {s['name']}\n"
-                        f"{s['price']:,}원 → <b>{now_p:,}원</b> (-{diff:,}원)")
-                    목록[i]['price'] = now_p
-                    목록[i]['상태']  = "판매중"
-                elif now_p:
-                    목록[i]['상태'] = "판매중"
-                else:
-                    if s['상태'] == "판매중":
-                        send_telegram(
-                            f"🚫 <b>품절/확인불가!</b> {icon} {플랫폼}\n"
-                            f"📦 {s['name']}\n상태: {now_st}")
-                    목록[i]['상태'] = now_st
-
-            bar.empty()
-            저장(목록)
-            st.success("✅ 전수 점검 완료!")
-            st.rerun()
+    # ── 수동 전수 점검 버튼 ───────────────────────────────────────
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("🔄 지금 즉시 수동 점검 + 텔레그램 발송", type="primary", use_container_width=True):
+            목록 = 로드()
+            if not 목록:
+                st.warning("등록된 상품이 없습니다.")
+            else:
+                with st.spinner(f"총 {len(목록)}개 상품 점검 중..."):
+                    자동_가격체크(source="수동")
+                st.success("✅ 수동 점검 완료! 텔레그램을 확인하세요.")
+                st.rerun()
+    with col_btn2:
+        if st.button("🧪 지금 당장 테스트 발송", use_container_width=True):
+            send_telegram(
+                f"🧪 <b>테스트 발송</b>\n"
+                f"위탁의왕 자동 점검 정상 작동 중 ✅\n"
+                f"⏰ 자동 점검 시간: 오전 11:00 · 오후 2:00\n"
+                f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            )
+            st.success("✅ 텔레그램으로 테스트 메시지를 보냈습니다!")
 
     st.divider()
 
     # ── 감시 목록 표시 ────────────────────────────────────────────
+    목록 = 로드()
     st.markdown("### 📋 감시 중인 영토")
     if not 목록:
         st.info("아직 등록된 상품이 없습니다. 위에서 추가해주세요.")
     else:
-        # 플랫폼별 요약
         platform_counts = {}
         for s in 목록:
             p = s.get('platform','도매꾹')
-            platform_counts[p] = platform_counts.get(p, 0) + 1
-        summary_html = " &nbsp; ".join([
+            platform_counts[p] = platform_counts.get(p,0) + 1
+        summary = " &nbsp; ".join([
             f"<span style='background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);"
             f"border-radius:20px;padding:4px 12px;font-size:.82rem;'>"
             f"{PLATFORM_ICONS.get(p,'⚪')} {p} {c}개</span>"
-            for p, c in platform_counts.items()
+            for p,c in platform_counts.items()
         ])
-        st.markdown(f"<div style='margin-bottom:16px;'>{summary_html}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='margin-bottom:16px;'>{summary}</div>", unsafe_allow_html=True)
 
         for idx, s in enumerate(목록):
-            플랫폼 = s.get('platform', '도매꾹')
-            icon   = PLATFORM_ICONS.get(플랫폼, "⚪")
-            if s['상태'] == "판매중":
-                sc = "color:#03C75A;font-weight:bold;"
-            elif s['상태'] == "품절":
-                sc = "color:#ff4b4b;font-weight:bold;"
-            else:
-                sc = "color:#ffd700;font-weight:bold;"
-
-            with st.container():
-                c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 1, 1])
-                c1.markdown(
-                    f"{icon} **{s['name']}** "
-                    f"<span style='color:#555;font-size:.78rem;background:rgba(255,255,255,.05);"
-                    f"padding:2px 7px;border-radius:10px;'>{플랫폼}</span>",
-                    unsafe_allow_html=True
-                )
-                c2.markdown(f"<strong style='color:#ffd700;'>{s['price']:,}원</strong>", unsafe_allow_html=True)
-                c3.markdown(f"<span style='{sc}'>{s['상태']}</span>", unsafe_allow_html=True)
-                c4.link_button("🔗", s.get('url','#'), use_container_width=True)
-                if c5.button("삭제", key=f"d_{idx}", type="secondary"):
-                    목록.pop(idx); 저장(목록); st.rerun()
+            플랫폼 = s.get('platform','도매꾹')
+            icon   = PLATFORM_ICONS.get(플랫폼,"⚪")
+            if s['상태'] == "판매중":   sc = "color:#03C75A;font-weight:bold;"
+            elif s['상태'] == "품절":   sc = "color:#ff4b4b;font-weight:bold;"
+            else:                        sc = "color:#ffd700;font-weight:bold;"
+            c1,c2,c3,c4,c5 = st.columns([3,1,1,1,1])
+            c1.markdown(
+                f"{icon} **{s['name']}** "
+                f"<span style='color:#555;font-size:.78rem;background:rgba(255,255,255,.05);"
+                f"padding:2px 7px;border-radius:10px;'>{플랫폼}</span>",
+                unsafe_allow_html=True)
+            c2.markdown(f"<strong style='color:#ffd700;'>{s['price']:,}원</strong>", unsafe_allow_html=True)
+            c3.markdown(f"<span style='{sc}'>{s['상태']}</span>", unsafe_allow_html=True)
+            c4.link_button("🔗", s.get('url','#'), use_container_width=True)
+            if c5.button("삭제", key=f"d_{idx}", type="secondary"):
+                목록.pop(idx); 저장(목록); st.rerun()
 
 # ==========================================
 # 💎 블루오션 탐지 + 자동추천
