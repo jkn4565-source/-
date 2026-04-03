@@ -1532,15 +1532,30 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
         result = {"keyword":"", "price":0, "source":"", "link":"#", "image":"", "draft":""}
 
         # ── 키워드 추출 ───────────────────────────────────────────
-        # title: "👑 피크닉 돗자리 방수 대형 — 원클릭 등록 패키지" → 대시 앞부분
-        m = re.search(r'<title>👑\s*([^—\-<]+?)(?:\s*[—\-]|</title>)', raw_html)
+        # ✅ h1 우선: 두 HTML 형식 모두 h1에 키워드만 정확히 들어있음
+        # 상세페이지:  <h1 class="fu">👑 욕실 김서림 방지필름</h1>
+        # 등록패키지:  <h1>👑 피크닉 돗자리 방수 대형</h1>
+        m = re.search(r'<h1[^>]*>👑\s*([^<]+)</h1>', raw_html)
         if m:
             result["keyword"] = m.group(1).strip()
-        # h1 fallback: "👑 피크닉 돗자리 방수 대형"
+
+        # title fallback (h1 실패 시)
         if not result["keyword"]:
-            m = re.search(r'<h1[^>]*>👑\s*([^<]+)</h1>', raw_html)
+            # 등록패키지 형식: "👑 키워드 — 원클릭 등록 패키지" → 대시 앞
+            m = re.search(r'<title>👑\s*([^—\-<]+?)(?:\s*[—\-])', raw_html)
             if m:
-                result["keyword"] = m.group(1).strip()
+                kw_candidate = m.group(1).strip()
+                # "위탁의왕"처럼 브랜드명이 나오면 대시 뒤를 사용
+                if kw_candidate in ('위탁의왕', 'Ultra', ''):
+                    m2 = re.search(r'<title>[^—\-]+[—\-]\s*([^<\-—]+?)(?:\s*[—\-]|</title>)', raw_html)
+                    if m2: result["keyword"] = m2.group(1).strip()
+                else:
+                    result["keyword"] = kw_candidate
+            # 상세페이지 형식: "👑 위탁의왕 — 키워드" → 대시 뒤
+            if not result["keyword"]:
+                m = re.search(r'<title>👑[^—\-]+[—\-]\s*([^<]+)</title>', raw_html)
+                if m:
+                    result["keyword"] = m.group(1).strip()
 
         # ── HTML 태그 제거 후 텍스트로 검색 (strong, div 등 무관하게 동작) ──
         plain = re.sub(r'<[^>]+>', ' ', raw_html)
