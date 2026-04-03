@@ -106,7 +106,10 @@ def call_claude_api(body):
         resp = requests.post("https://api.anthropic.com/v1/messages",
                              headers=headers, json=body, timeout=80)
         if resp.status_code == 200:
-            return resp.json()["content"][0]["text"].strip()
+            text = resp.json()["content"][0]["text"].strip()
+            # ✅ 코드블록 전처리 — 앱 전체 일괄 적용
+            text = re.sub(r'```[^\n]*\n?', '', text)
+            return text.strip()
         return None
     except:
         return None
@@ -1403,6 +1406,7 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
 
         super_prompt = f"""당신은 네이버 쇼핑 SEO 전문가 + 탑티어 이커머스 카피라이터 + MD의 역할을 동시에 수행합니다.
 {mode_instruction}
+⚠️ 출력 규칙: ###, **, - 등 마크다운만 사용하세요. 코드블록(```)은 절대 사용 금지입니다.
 
 [📦 상품 기본 정보]
 - 키워드: {pkg_kw}
