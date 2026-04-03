@@ -134,12 +134,20 @@ def 필터링(items, 배송비=0):
 def 도매꾹검색(검색어, 개수=20):
     url = "https://domeggook.com/ssl/api/"
 
-    def _fetch(kw):
-        params = {"ver":"4.1","mode":"getItemList","aid":DOMEGGOOK_API_KEY,
-                  "market":"dome","om":"json","kw":kw,"sz":개수}
+    def _fetch(kw, market="dome"):
+        params = {
+            "ver":  "4.1",
+            "mode": "getItemList",
+            "aid":  DOMEGGOOK_API_KEY,
+            "om":   "json",
+            "kw":   kw,
+            "sz":   50,           # ✅ 20 → 50으로 확대
+            "sort": "price",      # ✅ 가격순 정렬
+            "market": market      # ✅ 마켓 분리 (dome / ddang)
+        }
         try:
             data      = requests.get(url, params=params, timeout=10).json()
-            list_data = data.get('domeggook',{}).get('list',{})
+            list_data = data.get('domeggook', {}).get('list', {})
             if not list_data:
                 return []
             items = list_data.get('item')
@@ -147,6 +155,7 @@ def 도매꾹검색(검색어, 개수=20):
                 return []
             if isinstance(items, dict):
                 items = [items]
+
             결과 = []
             for item in items:
                 p = int(item.get('price') or 0)
@@ -156,28 +165,32 @@ def 도매꾹검색(검색어, 개수=20):
                 if p <= 0:
                     continue
                 결과.append({
-                    "제목":   item.get('title',''),
-                    "가격":   p, "배송비": f, "총가격": p+f,
-                    "이미지": item.get('thumb',''),
-                    "링크":   item.get('url',''),
-                    "출처":   "도매꾹"
+                    "제목":   item.get('title', ''),
+                    "가격":   p,
+                    "배송비": f,
+                    "총가격": p + f,
+                    "이미지": item.get('thumb', ''),
+                    "링크":   item.get('url', ''),
+                    "출처":   "도매꾹 땡처리" if market == "ddang" else "도매꾹"
                 })
-            return sorted(결과, key=lambda x: x['총가격'])
-        except Exception as e:
+            return 결과
+        except Exception:
             return []
 
-    # 1차 시도: 원래 검색어
-    결과 = _fetch(검색어)
+    # ── 1차: 원래 검색어로 일반 + 땡처리 동시 검색 ──────────────
+    결과_dome  = _fetch(검색어, market="dome")
+    결과_ddang = _fetch(검색어, market="ddang")
+    결과       = 결과_dome + 결과_ddang
 
-    # 2차 시도: 결과 없으면 첫 번째 단어만으로 재시도
+    # ── 2차: 결과 없으면 첫 단어로 재시도 ───────────────────────
     if not 결과 and ' ' in 검색어:
-        첫단어 = 검색어.split()[0]
-        결과 = _fetch(첫단어)
-        if 결과:
-            # 검색 성공 시 원래 키워드와 관련 있는 것만 필터 (선택적)
-            pass
+        첫단어     = 검색어.split()[0]
+        결과_dome  = _fetch(첫단어, market="dome")
+        결과_ddang = _fetch(첫단어, market="ddang")
+        결과       = 결과_dome + 결과_ddang
 
-    return 결과
+    # ── 가격순 정렬 후 반환 ──────────────────────────────────────
+    return sorted(결과, key=lambda x: x['총가격'])
 
 def 검색_11번가(검색어, 개수=20):
     url    = "http://openapi.11st.co.kr/openapi/OpenApiService.tmall"
