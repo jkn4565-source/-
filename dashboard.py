@@ -136,17 +136,23 @@ def 도매꾹검색(검색어, 개수=20):
 
     def _fetch(kw, market="dome"):
         params = {
-            "ver":  "4.1",
-            "mode": "getItemList",
-            "aid":  DOMEGGOOK_API_KEY,
-            "om":   "json",
-            "kw":   kw,
-            "sz":   50,           # ✅ 20 → 50으로 확대
-            "sort": "price",      # ✅ 가격순 정렬
-            "market": market      # ✅ 마켓 분리 (dome / ddang)
+            "ver":    "4.1",
+            "mode":   "getItemList",
+            "aid":    DOMEGGOOK_API_KEY,
+            "om":     "json",
+            "kw":     kw,
+            "sz":     50,
+            "sort":   "price",
+            "market": market
         }
         try:
-            data      = requests.get(url, params=params, timeout=10).json()
+            resp = requests.get(url, params=params, timeout=10)
+            data = resp.json()
+
+            # ✅ 디버그: API 실제 응답 확인
+            with st.expander(f"🔧 도매꾹 API 디버그 [{market}] - '{kw}'"):
+                st.json(data)
+
             list_data = data.get('domeggook', {}).get('list', {})
             if not list_data:
                 return []
@@ -171,25 +177,23 @@ def 도매꾹검색(검색어, 개수=20):
                     "총가격": p + f,
                     "이미지": item.get('thumb', ''),
                     "링크":   item.get('url', ''),
-                    "출처":   "도매꾹 땡처리" if market == "ddang" else "도매꾹"
+                    "출처":   "도매꾹"
                 })
             return 결과
-        except Exception:
+        except Exception as e:
+            st.warning(f"도매꾹 오류 [{market}]: {e}")
             return []
 
-    # ── 1차: 원래 검색어로 일반 + 땡처리 동시 검색 ──────────────
     결과_dome  = _fetch(검색어, market="dome")
     결과_ddang = _fetch(검색어, market="ddang")
     결과       = 결과_dome + 결과_ddang
 
-    # ── 2차: 결과 없으면 첫 단어로 재시도 ───────────────────────
     if not 결과 and ' ' in 검색어:
         첫단어     = 검색어.split()[0]
         결과_dome  = _fetch(첫단어, market="dome")
         결과_ddang = _fetch(첫단어, market="ddang")
         결과       = 결과_dome + 결과_ddang
 
-    # ── 가격순 정렬 후 반환 ──────────────────────────────────────
     return sorted(결과, key=lambda x: x['총가격'])
 
 def 검색_11번가(검색어, 개수=20):
