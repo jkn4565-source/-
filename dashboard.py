@@ -1519,149 +1519,240 @@ strong{{color:#e8eaf0}}footer{{margin-top:36px;text-align:center;color:#8892a4;f
 # ==========================================
 elif 메뉴 == "🎯 원클릭 등록 패키지":
     st.markdown("<h1>🎯 원클릭 상품 등록 패키지</h1>", unsafe_allow_html=True)
-    st.caption("키워드 하나로 → 경쟁사 분석 · 소싱 · SEO 상품명 · 상세페이지 · 썸네일까지 자동 완성")
+    st.caption("블루오션 HTML을 첨부하면 → 같은 상품 기준으로 경쟁사 분석·SEO 상품명·상세페이지·썸네일까지 자동 완성")
 
+    # ── HTML 파서 함수 ────────────────────────────────────────────
+    def parse_blueocean_html(raw_html):
+        """블루오션 STEP3 HTML에서 키워드·소싱 정보·AI 내용 추출"""
+        result = {"keyword":"", "price":0, "source":"", "link":"#", "image":"", "draft":""}
+
+        # 키워드 — <title> 태그에서 추출
+        m = re.search(r'<title>[^—\-]*[—\-]\s*([^<]+)</title>', raw_html)
+        if m:
+            result["keyword"] = m.group(1).strip()
+
+        # 키워드 — <h1> 에서도 시도
+        if not result["keyword"]:
+            m = re.search(r'<h1[^>]*>👑\s*([^<]+)</h1>', raw_html)
+            if m:
+                result["keyword"] = m.group(1).strip()
+
+        # 소싱가·출처 — "소싱가: N,NNN원 (출처)" 패턴
+        m = re.search(r'소싱가[^:]*:\s*([\d,]+)원[^(]*\(([^)]+)\)', raw_html)
+        if m:
+            result["price"]  = int(m.group(1).replace(',',''))
+            result["source"] = m.group(2).strip()
+
+        # 소싱처 링크 — class="sb" 버튼의 href
+        m = re.search(r'class="sb"[^>]*href="([^"]+)"', raw_html)
+        if not m:
+            m = re.search(r'href="([^"]+)"[^>]*class="sb"', raw_html)
+        if not m:  # 소싱처 바로가기 텍스트 근처
+            m = re.search(r'href="(https?://[^"]+)"[^>]*>🛒', raw_html)
+        if m:
+            result["link"] = m.group(1)
+
+        # 소싱 이미지 — ic 카드 안의 <img>
+        m = re.search(r'class="ic[^"]*".*?<img\s+src="([^"]+)"', raw_html, re.DOTALL)
+        if not m:
+            m = re.search(r'<img\s+src="(https?://[^"]+)"', raw_html)
+        if m:
+            result["image"] = m.group(1)
+
+        # AI 기획안 텍스트 — <div class="ab"> 내용
+        m = re.search(r'class="ab"[^>]*>(.*?)</div>', raw_html, re.DOTALL)
+        if m:
+            txt = re.sub(r'<[^>]+>',' ', m.group(1))
+            txt = re.sub(r'\s+',' ', txt).strip()
+            result["draft"] = txt[:3500]
+        else:
+            # fallback: 전체 텍스트에서 CSS·JS 제거 후 추출
+            txt = re.sub(r'<style[^>]*>.*?</style>', ' ', raw_html, flags=re.DOTALL)
+            txt = re.sub(r'<script[^>]*>.*?</script>', ' ', txt, flags=re.DOTALL)
+            txt = re.sub(r'<[^>]+>',' ', txt)
+            txt = re.sub(r'\s+',' ', txt).strip()
+            result["draft"] = txt[:3500]
+
+        return result
+
+    # ── 파이프라인 안내 ───────────────────────────────────────────
     st.markdown("""
     <div style="background:rgba(255,215,0,0.06);border:1px solid rgba(255,215,0,0.2);
-    border-radius:12px;padding:16px 22px;margin-bottom:20px;">
-    <b style="color:#ffd700;">🔄 자동 파이프라인 순서</b><br>
+    border-radius:12px;padding:16px 22px;margin-bottom:16px;">
+    <b style="color:#ffd700;">🔄 두 가지 사용 방법</b><br>
     <span style="color:#ccc;font-size:.9rem;">
-    ① 키워드 입력 &nbsp;→&nbsp;
-    ② 블루오션 HTML 첨부 (선택·강력추천) &nbsp;→&nbsp;
-    ③ 경쟁사 상품명 수집·분석 &nbsp;→&nbsp;
-    ④ 소싱 최저가 조회 &nbsp;→&nbsp;
-    ⑤ 리뷰 분석 (선택) &nbsp;→&nbsp;
-    ⑥ 슈퍼 AI 통합 기획 &nbsp;→&nbsp;
-    ⑦ 썸네일 자동 생성 &nbsp;→&nbsp;
-    ⑧ 완성 HTML 패키지 다운로드
+    <b style="color:#03C75A;">방법 A (권장)</b> — 블루오션 HTML 첨부 →
+    자동으로 키워드·소싱 추출 → 동일 상품 기준으로 경쟁사 분석 + 업그레이드<br>
+    <b style="color:#ffd700;">방법 B</b> — 키워드 직접 입력 →
+    처음부터 소싱 조회 + 상세페이지 생성
     </span></div>""", unsafe_allow_html=True)
 
-    # ── 입력 영역 ─────────────────────────────────────────────────
-    pkg_kw = st.text_input("📦 등록할 상품 키워드", placeholder="예: 실리콘 얼음틀, 무선 가습기, 캠핑 랜턴", key="pkg_kw")
-
-    # ── 블루오션 HTML 첨부 ────────────────────────────────────────
-    st.markdown("""
-    <div style="background:rgba(3,199,90,0.07);border:1px solid rgba(3,199,90,0.25);
-    border-radius:10px;padding:12px 18px;margin-bottom:12px;">
-    <b style="color:#03C75A;">📄 블루오션 자동추천 HTML 첨부 (강력 추천)</b><br>
+    # ── HTML 첨부 (STEP 0) ────────────────────────────────────────
+    st.markdown("""<div style="background:rgba(3,199,90,0.07);border:1px solid rgba(3,199,90,0.25);
+    border-radius:10px;padding:12px 18px;margin-bottom:10px;">
+    <b style="color:#03C75A;">📄 블루오션 STEP3 HTML 첨부 (강력 추천)</b><br>
     <span style="color:#aaa;font-size:.85rem;">
-    💎 블루오션 탐지 메뉴의 STEP3에서 다운로드한 HTML 파일을 첨부하면,<br>
-    기존 기획안을 기반으로 AI가 훨씬 더 깊고 구체적으로 업그레이드합니다.
+    첨부하면 키워드·소싱가·이미지를 자동 추출 → 같은 상품 기준으로 경쟁사 분석 + 더 깊은 기획안 생성
     </span></div>""", unsafe_allow_html=True)
 
     uploaded_html = st.file_uploader(
         "📎 블루오션 STEP3 HTML 파일 첨부",
         type=["html"], key="pkg_html",
-        help="블루오션 탐지 → AI 자동 일일추천 → STEP3에서 다운로드한 파일"
+        help="💎 블루오션 탐지 → AI 자동 일일추천 → STEP3에서 다운로드한 파일"
     )
 
-    # HTML 파싱해서 텍스트 추출
-    prev_draft = ""
+    # ── HTML 파싱 결과 ────────────────────────────────────────────
+    html_data     = {}   # 파싱된 데이터
+    prev_draft    = ""
+    html_sourcing = None
+
     if uploaded_html:
         try:
-            raw_html  = uploaded_html.read().decode('utf-8')
-            # HTML 태그 제거 → 순수 텍스트 추출
-            text_only = re.sub(r'<style[^>]*>.*?</style>', ' ', raw_html, flags=re.DOTALL)
-            text_only = re.sub(r'<script[^>]*>.*?</script>', ' ', text_only, flags=re.DOTALL)
-            text_only = re.sub(r'<[^>]+>', ' ', text_only)
-            text_only = re.sub(r'&[a-z]+;', ' ', text_only)
-            text_only = re.sub(r'\s+', ' ', text_only).strip()
-            # 핵심 내용만 최대 4000자 (프롬프트 토큰 절약)
-            prev_draft = text_only[:4000]
-            st.success(f"✅ 기존 기획안 로드 완료 ({len(prev_draft):,}자) — AI가 이 내용을 기반으로 업그레이드합니다!")
-            with st.expander("📋 인식된 기존 기획안 내용 미리보기"):
-                st.text(prev_draft[:800] + "..." if len(prev_draft) > 800 else prev_draft)
+            raw = uploaded_html.read().decode('utf-8')
+            html_data = parse_blueocean_html(raw)
+            prev_draft = html_data.get("draft","")
+
+            # 추출 결과 표시
+            ok_kw  = bool(html_data.get("keyword"))
+            ok_src = html_data.get("price",0) > 0
+
+            st.markdown(f"""
+            <div style="background:rgba(3,199,90,.08);border:1px solid rgba(3,199,90,.2);
+            border-radius:10px;padding:14px 18px;margin-bottom:10px;">
+            <b style="color:#03C75A;">✅ HTML 파일 분석 완료!</b><br>
+            <span style="color:#ccc;font-size:.88rem;">
+            {"✅" if ok_kw else "⚠️"} 키워드: <b style="color:#ffd700;">{html_data.get('keyword','추출 실패')}</b>
+            &nbsp;&nbsp;
+            {"✅" if ok_src else "⚠️"} 소싱가: <b style="color:#03C75A;">{html_data['price']:,}원</b>
+            &nbsp;&nbsp;
+            출처: {html_data.get('source','-')}
+            </span></div>""", unsafe_allow_html=True)
+
+            if ok_src:
+                html_sourcing = {
+                    "총가격":   html_data["price"],
+                    "출처":     html_data["source"],
+                    "링크":     html_data["link"],
+                    "이미지":   html_data["image"],
+                    "최소수량": 1,
+                    "실매입가": html_data["price"],
+                }
+
+            with st.expander("📋 추출된 기획안 내용 미리보기"):
+                st.text(prev_draft[:600] + ("..." if len(prev_draft)>600 else ""))
+
         except Exception as e:
-            st.warning(f"HTML 파싱 오류: {e} — 첨부 없이 진행합니다.")
+            st.warning(f"HTML 파싱 오류: {e} — 키워드를 직접 입력해주세요.")
+
+    # ── 키워드 입력 (HTML 첨부 시 자동 채워짐) ───────────────────
+    default_kw = html_data.get("keyword","") if html_data else ""
+    pkg_kw = st.text_input(
+        "📦 등록할 상품 키워드",
+        value=default_kw,
+        placeholder="블루오션 HTML 첨부 시 자동 입력 / 직접 입력도 가능",
+        key="pkg_kw"
+    )
 
     col_p1, col_p2, col_p3 = st.columns(3)
-    pkg_target  = col_p1.selectbox("주 타겟", ["전체","육아맘","자취생","직장인","캠퍼","시니어"], key="pkg_target")
-    pkg_price   = col_p2.selectbox("가격대", ["1만원 이하","1~3만원","3~5만원","5만원 이상"], key="pkg_price")
-    pkg_tone    = col_p3.selectbox("강조 포인트", ["가성비","프리미엄","친환경/안전","디자인/감성","기능성"], key="pkg_tone")
+    pkg_target = col_p1.selectbox("주 타겟", ["전체","육아맘","자취생","직장인","캠퍼","시니어"], key="pkg_target")
+    pkg_price  = col_p2.selectbox("가격대",  ["1만원 이하","1~3만원","3~5만원","5만원 이상"], key="pkg_price")
+    pkg_tone   = col_p3.selectbox("강조 포인트", ["가성비","프리미엄","친환경/안전","디자인/감성","기능성"], key="pkg_tone")
 
-    st.markdown("##### 💬 경쟁사 리뷰 (선택사항 — 없으면 AI가 카테고리 기반으로 추론합니다)")
+    st.markdown("##### 💬 경쟁사 리뷰 (선택 — 없으면 AI가 추론합니다)")
     col_r1, col_r2 = st.columns(2)
-    pkg_good = col_r1.text_area("👍 호평 리뷰", height=100, key="pkg_good",
-        placeholder="네이버/쿠팡 경쟁사 상품의 4~5점 리뷰 붙여넣기")
-    pkg_bad  = col_r2.text_area("👎 악평 리뷰", height=100, key="pkg_bad",
-        placeholder="네이버/쿠팡 경쟁사 상품의 1~3점 리뷰 붙여넣기")
+    pkg_good = col_r1.text_area("👍 호평 리뷰", height=90, key="pkg_good",
+        placeholder="경쟁사 4~5점 리뷰 붙여넣기")
+    pkg_bad  = col_r2.text_area("👎 악평 리뷰", height=90, key="pkg_bad",
+        placeholder="경쟁사 1~3점 리뷰 붙여넣기")
 
-    if st.button("🚀 원클릭 등록 패키지 자동 생성 시작", type="primary", use_container_width=True, key="btn_pkg"):
-        if not pkg_kw.strip():
-            st.warning("상품 키워드를 입력해주세요!")
+    if st.button("🚀 원클릭 등록 패키지 자동 생성 시작", type="primary",
+                 use_container_width=True, key="btn_pkg"):
+
+        # 유효성 검사
+        effective_kw = pkg_kw.strip() or html_data.get("keyword","")
+        if not effective_kw:
+            st.warning("상품 키워드를 입력하거나 HTML 파일을 첨부해주세요!")
             st.stop()
 
         # ── STEP 1: 경쟁사 상품명 수집 ───────────────────────────
         st.divider()
-        st.markdown("### 🔍 STEP 1 — 경쟁사 상품명 수집")
-        with st.spinner("네이버 상위 20개 상품명 수집 중..."):
-            nv = 네이버검색(pkg_kw, 개수=20)
+        st.markdown(f"### 🔍 STEP 1 — 경쟁사 상품명 수집 (`{effective_kw}`)")
+        with st.spinner(f"'{effective_kw}' 네이버 상위 20개 상품명 수집 중..."):
+            nv          = 네이버검색(effective_kw, 개수=20)
             comp_items  = nv.get("items", [])
             comp_total  = nv.get("total", 0)
             comp_titles = [it['title'].replace('<b>','').replace('</b>','') for it in comp_items]
-            comp_prices = [int(it.get('lprice', 0)) for it in comp_items]
+            comp_prices = [int(it.get('lprice',0)) for it in comp_items]
 
         if comp_titles:
             st.success(f"✅ 경쟁사 {len(comp_titles)}개 수집 완료 (전체 {comp_total:,}개)")
             with st.expander("📋 수집된 경쟁사 상품명 보기"):
-                for i, (t, p) in enumerate(zip(comp_titles, comp_prices), 1):
-                    st.markdown(f"**{i}.** {t} — <span style='color:#03C75A;'>{p:,}원</span>", unsafe_allow_html=True)
+                for i,(t,p) in enumerate(zip(comp_titles, comp_prices), 1):
+                    st.markdown(f"**{i}.** {t} — <span style='color:#03C75A;'>{p:,}원</span>",
+                                unsafe_allow_html=True)
         else:
             st.warning("경쟁사 상품명 수집 실패 — AI 추론으로 진행합니다.")
 
-        # ── STEP 2: 소싱 최저가 조회 ─────────────────────────────
-        st.markdown("### 💰 STEP 2 — 소싱 최저가 조회")
-        with st.spinner("최저가 소싱처 탐색 중..."):
-            소싱 = 소싱데이터_조회(pkg_kw)
+        # ── STEP 2: 소싱 정보 (HTML 추출 우선 / 없으면 API 조회) ─
+        st.markdown("### 💰 STEP 2 — 소싱 정보 확인")
+        소싱 = None
 
-        if 소싱:
-            qty      = 소싱.get('최소수량', 1)
-            실매입    = 소싱.get('실매입가', 소싱['총가격'])
+        if html_sourcing:
+            # ✅ HTML에서 추출한 소싱 그대로 사용
+            소싱 = html_sourcing
+            st.success("✅ HTML 파일에서 소싱 정보를 그대로 사용합니다.")
             col_s1, col_s2, col_s3 = st.columns(3)
-            col_s1.metric("최저 단가", f"{소싱['총가격']:,}원")
+            col_s1.metric("소싱가 (HTML 추출)", f"{소싱['총가격']:,}원")
             col_s2.metric("출처", 소싱['출처'])
-            col_s3.metric("최소수량 기준 실매입", f"{실매입:,}원")
+            col_s3.metric("소싱처 링크", "✅ 보존됨")
             if 소싱.get('이미지'):
-                st.image(소싱['이미지'], width=180, caption="소싱 이미지")
+                st.image(소싱['이미지'], width=180, caption="소싱 이미지 (HTML 추출)")
+            st.link_button("🛒 소싱처 바로가기", 소싱['링크'])
         else:
-            st.warning("소싱 데이터 없음 — 상세페이지는 텍스트 기반으로 생성됩니다.")
+            # HTML 없거나 파싱 실패 → 새로 조회
+            with st.spinner(f"'{effective_kw}' 최저가 소싱처 탐색 중..."):
+                소싱 = 소싱데이터_조회(effective_kw)
+            if 소싱:
+                col_s1, col_s2, col_s3 = st.columns(3)
+                col_s1.metric("최저 단가", f"{소싱['총가격']:,}원")
+                col_s2.metric("출처", 소싱['출처'])
+                col_s3.metric("실매입가", f"{소싱.get('실매입가', 소싱['총가격']):,}원")
+                if 소싱.get('이미지'):
+                    st.image(소싱['이미지'], width=180, caption="소싱 이미지")
+            else:
+                st.warning("소싱 데이터 없음 — 텍스트 기반으로 생성됩니다.")
 
         # ── STEP 3: 슈퍼 AI 통합 분석 ────────────────────────────
         st.markdown("### 🧠 STEP 3 — AI 슈퍼 통합 분석")
 
-        titles_text = "\n".join([f"{i}. {t}" for i,t in enumerate(comp_titles[:15],1)]) if comp_titles else "수집 실패"
-        price_info  = f"{소싱['총가격']:,}원 ({소싱['출처']}, 최소 {소싱.get('최소수량',1)}개)" if 소싱 else "미확인"
+        titles_text    = "\n".join([f"{i}. {t}" for i,t in enumerate(comp_titles[:15],1)]) if comp_titles else "수집 실패"
+        price_info     = f"{소싱['총가격']:,}원 ({소싱['출처']})" if 소싱 else "미확인"
         review_section = ""
-        if pkg_good.strip():
-            review_section += f"\n[경쟁사 호평 리뷰]\n{pkg_good}\n"
-        if pkg_bad.strip():
-            review_section += f"\n[경쟁사 악평 리뷰]\n{pkg_bad}\n"
+        if pkg_good.strip(): review_section += f"\n[경쟁사 호평 리뷰]\n{pkg_good}\n"
+        if pkg_bad.strip():  review_section += f"\n[경쟁사 악평 리뷰]\n{pkg_bad}\n"
         if not review_section:
             review_section = "\n[리뷰 없음 — 키워드와 카테고리 기반으로 고객 심리를 추론하세요]\n"
 
-        # ── 첨부 HTML 유무에 따라 프롬프트 분기 ──────────────────
         if prev_draft:
             draft_section = f"""
-[📄 기존 상세페이지 초안 — 이것을 기반으로 업그레이드하세요]
+[📄 기존 상세페이지 초안 — 이 상품의 이전 기획안입니다. 기반으로 업그레이드하세요]
 {prev_draft}
 
-⚠️ 위 초안은 이미 AI가 한 번 작성한 기획안입니다.
-아래 추가 데이터(경쟁사 분석·리뷰·소싱)를 반영하여:
-- 초안의 좋은 내용은 유지하되 더 구체적으로 발전시키세요
-- 초안에서 부족한 부분(경쟁사 차별화, 키워드 최적화, 가격전략)을 보완하세요
-- 상품 특징과 후킹 카피는 경쟁사 리뷰 데이터를 반영해 완전히 새롭게 작성하세요
+⚠️ 반드시 위 초안과 동일한 상품({effective_kw})에 대해 작성하세요.
+- 초안의 좋은 내용은 유지하되 경쟁사 분석·리뷰를 반영해 더 구체적으로 발전시키세요
+- 후킹 카피와 셀링포인트는 경쟁사 데이터를 반영해 완전히 새롭게 강화하세요
 """
-            mode_instruction = "기존 초안을 기반으로 경쟁사 데이터까지 반영한 최종 업그레이드 버전을 작성하세요."
+            mode_instruction = f"'{effective_kw}' 상품의 기존 기획 초안을 기반으로, 경쟁사 데이터까지 반영한 최종 업그레이드 버전을 작성하세요."
         else:
-            draft_section = ""
-            mode_instruction = "아래 모든 데이터를 반영하여 완전한 상품 기획안을 처음부터 작성하세요."
+            draft_section    = ""
+            mode_instruction = f"'{effective_kw}' 상품에 대해 아래 모든 데이터를 반영하여 완전한 상품 기획안을 작성하세요."
 
         super_prompt = f"""당신은 네이버 쇼핑 SEO 전문가 + 탑티어 이커머스 카피라이터 + MD의 역할을 동시에 수행합니다.
 {mode_instruction}
 ⚠️ 출력 규칙: ###, **, - 등 마크다운만 사용하세요. 코드블록(```)은 절대 사용 금지입니다.
 
 [📦 상품 기본 정보]
-- 키워드: {pkg_kw}
+- 키워드: {effective_kw}
 - 주 타겟: {pkg_target}
 - 가격대: {pkg_price}
 - 강조 포인트: {pkg_tone}
@@ -1709,7 +1800,6 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
         with st.spinner("AI가 모든 데이터를 통합 분석 중... (20~30초 소요)"):
             result = call_claude_api({"max_tokens": 3000,
                                       "messages": [{"role":"user","content": super_prompt}]})
-
         if not result:
             st.error("AI 분석 실패. 다시 시도해주세요.")
             st.stop()
@@ -1725,39 +1815,34 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
         # ── STEP 5: 썸네일 자동 생성 ─────────────────────────────
         st.markdown("### 🖼️ STEP 5 — 썸네일 자동 생성")
         thumb_img = None
-        if 소싱 and 소싱.get('이미지'):
+        thumb_img_url = 소싱.get('이미지','') if 소싱 else ''
+
+        if thumb_img_url:
             with st.spinner("소싱 이미지로 썸네일 합성 중..."):
                 try:
-                    r = requests.get(소싱['이미지'], timeout=10)
+                    r = requests.get(thumb_img_url, timeout=10)
                     if r.status_code == 200:
                         pil = Image.open(io.BytesIO(r.content)).convert("RGBA")
-                        pil = pil.resize((800, 800), Image.LANCZOS)
-
-                        # 하단 오버레이
-                        ov = Image.new("RGBA",(800,800),(0,0,0,0))
-                        od = ImageDraw.Draw(ov)
-                        for i in range(220):
-                            od.rectangle([0,800-220+i,800,801-220+i],
-                                         fill=(0,0,0,int(185*(i/220))))
-                        pil = Image.alpha_composite(pil, ov)
+                        pil = pil.resize((800,800), Image.LANCZOS)
+                        ov  = Image.new("RGBA",(800,800),(0,0,0,0))
+                        od  = ImageDraw.Draw(ov)
+                        for idx_i in range(220):
+                            od.rectangle([0,800-220+idx_i,800,801-220+idx_i],
+                                         fill=(0,0,0,int(185*(idx_i/220))))
+                        pil  = Image.alpha_composite(pil, ov)
                         draw = ImageDraw.Draw(pil)
-
-                        # 상품명 첫 줄을 메인 텍스트로
-                        first_line = result.split('\n')[0].replace('#','').strip()[:20] if result else pkg_kw
                         try:
                             fm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
                             fs = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
                         except:
                             fm = fs = ImageFont.load_default()
-
-                        bb = draw.textbbox((0,0), pkg_kw[:16], font=fm)
-                        draw.text(((800-(bb[2]-bb[0]))//2, 620), pkg_kw[:16], font=fm, fill=(255,215,0))
-
+                        label_kw = effective_kw[:16]
+                        bb = draw.textbbox((0,0), label_kw, font=fm)
+                        draw.text(((800-(bb[2]-bb[0]))//2, 620), label_kw, font=fm, fill=(255,215,0))
                         price_txt = f"소싱가 {소싱['총가격']:,}원" if 소싱 else ""
                         if price_txt:
                             bb2 = draw.textbbox((0,0), price_txt, font=fs)
                             draw.text(((800-(bb2[2]-bb2[0]))//2, 675), price_txt, font=fs, fill=(3,199,90))
-
                         thumb_img = pil.convert("RGB")
                         st.image(thumb_img, width=300, caption="자동 생성된 썸네일")
                 except Exception as e:
