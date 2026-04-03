@@ -109,7 +109,7 @@ def call_claude_api(body):
         if resp.status_code == 200:
             text = resp.json()["content"][0]["text"].strip()
             text = re.sub(r'```[^\n]*\n?', '', text)
-            text = text.replace('~~', '')   # ✅ 취소선 기호 제거
+            text = text.replace('~~', '~')   # ✅ 취소선 기호 제거
             return text.strip()
         return None
     except:
