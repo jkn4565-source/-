@@ -134,65 +134,42 @@ def 필터링(items, 배송비=0):
 def 도매꾹검색(검색어, 개수=20):
     url = "https://domeggook.com/ssl/api/"
 
-    def _fetch(kw, market="dome"):
-        params = {
-            "ver":    "4.1",
-            "mode":   "getItemList",
-            "aid":    DOMEGGOOK_API_KEY,
-            "om":     "json",
-            "kw":     kw,
-            "sz":     50,
-            "sort":   "price",
-            "market": market
-        }
+    def _fetch(kw):
+        params = {"ver":"4.1","mode":"getItemList","aid":DOMEGGOOK_API_KEY,
+                  "om":"json","kw":kw,"sz":50,"market":"dome"}
         try:
-            resp = requests.get(url, params=params, timeout=10)
-            data = resp.json()
-
-            # ✅ 디버그: API 실제 응답 확인
-            with st.expander(f"🔧 도매꾹 API 디버그 [{market}] - '{kw}'"):
-                st.json(data)
-
-            list_data = data.get('domeggook', {}).get('list', {})
-            if not list_data:
-                return []
+            data      = requests.get(url, params=params, timeout=10).json()
+            list_data = data.get('domeggook',{}).get('list',{})
+            if not list_data: return []
             items = list_data.get('item')
-            if not items:
-                return []
-            if isinstance(items, dict):
-                items = [items]
-
+            if not items: return []
+            if isinstance(items, dict): items = [items]
             결과 = []
             for item in items:
-                p = int(item.get('price') or 0)
-                f = int((item.get('deli') or {}).get('fee') or 0)
-                if (item.get('deli') or {}).get('who') == 'S':
-                    f = 0
-                if p <= 0:
-                    continue
+                p   = int(item.get('price') or 0)
+                f   = int((item.get('deli') or {}).get('fee') or 0)
+                qty = int(item.get('unitQty') or 1)
+                if (item.get('deli') or {}).get('who') == 'S': f = 0
+                if p <= 0: continue
                 결과.append({
-                    "제목":   item.get('title', ''),
-                    "가격":   p,
-                    "배송비": f,
-                    "총가격": p + f,
-                    "이미지": item.get('thumb', ''),
-                    "링크":   item.get('url', ''),
-                    "출처":   "도매꾹"
+                    "제목":     item.get('title',''),
+                    "가격":     p,
+                    "배송비":   f,
+                    "총가격":   p + f,
+                    "최소수량": qty,
+                    "실매입가": p * qty + f,   # ✅ 최소수량 기준 실제 매입 총액
+                    "이미지":   item.get('thumb',''),
+                    "링크":     item.get('url',''),
+                    "출처":     "도매꾹"
                 })
             return 결과
-        except Exception as e:
-            st.warning(f"도매꾹 오류 [{market}]: {e}")
-            return []
+        except: return []
 
-    결과_dome  = _fetch(검색어, market="dome")
-    결과_ddang = _fetch(검색어, market="ddang")
-    결과       = 결과_dome + 결과_ddang
-
+    # 1차: 원래 검색어
+    결과 = _fetch(검색어)
+    # 2차: 결과 없으면 첫 단어로 재시도
     if not 결과 and ' ' in 검색어:
-        첫단어     = 검색어.split()[0]
-        결과_dome  = _fetch(첫단어, market="dome")
-        결과_ddang = _fetch(첫단어, market="ddang")
-        결과       = 결과_dome + 결과_ddang
+        결과 = _fetch(검색어.split()[0])
 
     return sorted(결과, key=lambda x: x['총가격'])
 
@@ -279,10 +256,17 @@ def 출력_통합_결과_레이아웃(검색어):
                 if data:
                     best = data[0]
                     si   = f"<div style='position:absolute;top:10px;left:10px;background:#ff4500;color:white;padding:3px 8px;border-radius:5px;font-weight:bold;font-size:.8rem;'>판매량 {best['판매량']}+</div>" if '판매량' in best else ""
+                    # ✅ 도매꾹 전용 최소수량 배지
+                    qty_badge = ""
+                    if best.get('출처') == '도매꾹' and best.get('최소수량', 1) > 1:
+                        qty    = best['최소수량']
+                        실매입  = best.get('실매입가', best['총가격'] * qty)
+                        qty_badge = f"<div style='background:rgba(255,215,0,.15);border:1px solid rgba(255,215,0,.4);border-radius:8px;padding:6px 10px;margin-bottom:10px;font-size:.8rem;color:#ffd700;'>📦 최소 <b>{qty}개</b> 구매 · 실매입 <b>{실매입:,}원</b></div>"
                     st.markdown(f"""<div class="result-card">{si}
-<img src="{best['이미지']}" style="width:100%;border-radius:8px;margin-bottom:15px;">
-<h4 style="color:#ffd700;margin:0;">{best.get('총가격',best.get('가격')):,}원</h4>
-<p style="color:#ccc;font-size:.8rem;margin:5px 0 15px 0;height:40px;overflow:hidden;">{best['제목'][:40]}...</p>
+<img src="{best['이미지']}" style="width:100%;border-radius:8px;margin-bottom:10px;">
+<h4 style="color:#ffd700;margin:0 0 6px 0;">단가 {best.get('총가격',best.get('가격')):,}원</h4>
+{qty_badge}
+<p style="color:#ccc;font-size:.8rem;margin:0 0 10px 0;height:40px;overflow:hidden;">{best['제목'][:40]}...</p>
 </div>""", unsafe_allow_html=True)
                     st.link_button("👑 왕의 소싱처로 이동", best['링크'], type="primary")
                 else:
@@ -303,10 +287,16 @@ def 출력_통합_결과_레이아웃(검색어):
                 with col_img: st.image(item['이미지'], width=100)
                 with col_txt:
                     badge = "✈️ 직구" if item['출처']=="AliExpress" else "🇰🇷 국내"
+                    # ✅ 도매꾹 최소수량 정보
+                    qty_info = ""
+                    if item.get('출처') == '도매꾹' and item.get('최소수량', 1) > 1:
+                        qty      = item['최소수량']
+                        실매입    = item.get('실매입가', item['총가격'] * qty)
+                        qty_info = f"<br><span style='color:#ffd700;font-size:.85rem;'>📦 최소 {qty}개 · 실매입 {실매입:,}원 (배송비 포함)</span>"
                     st.markdown(f"""<div style="margin-bottom:15px;">
 <strong style="color:#ffd700;font-size:1.1rem;">{i}. [{badge}|{item['출처']}]</strong>
 <span style="color:#fff;">{item['제목']}</span><br>
-<span style="color:#03C75A;font-weight:bold;font-size:1.2rem;">{item['총가격']:,}원</span>
+<span style="color:#03C75A;font-weight:bold;font-size:1.2rem;">단가 {item['총가격']:,}원</span>{qty_info}
 </div>""", unsafe_allow_html=True)
                 with col_btn: st.link_button("구매하러 가기", item['링크'])
 
