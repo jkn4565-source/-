@@ -571,7 +571,7 @@ def ai_상세페이지_생성_및_저장(keyword, sourcing, reason, ocean_grade,
 ### ✅ 상품 특징 5가지
 ### 🎯 추천 검색 키워드 10개
 ### 💰 가격 전략"""
-    ai_text = call_claude_api({"max_tokens":2000,"messages":[{"role":"user",
+    ai_text = call_claude_api({"max_tokens":4096,"messages":[{"role":"user",
               "content":img_content+[{"type":"text","text":prompt}]}]})
     if not ai_text: return None, None, None
     html_str  = generate_html_detail_page(keyword, sourcing, reason, ocean_grade, ai_text)
@@ -614,7 +614,7 @@ def ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수):
 이번달 70% + 다음달 선제 30% 비율로 추천하세요.
 [출력] JSON 배열만. 설명 없음.
 [{{"keyword":"키워드","reason":"추천이유(시즌연관성포함)","price_range":"소싱가~판매가","season":"이번달/다음달선제"}}]"""
-    res = call_claude_api({"max_tokens":1500,"messages":[{"role":"user","content":prompt}]})
+    res = call_claude_api({"max_tokens":2000,"messages":[{"role":"user","content":prompt}]})
     if res:
         try:
             결과 = json.loads(res.replace("```json","").replace("```","").strip())
@@ -853,7 +853,7 @@ elif 메뉴 == "🏪 상품 등록 도우미":
             if st.button("✨ 황금 상세페이지 생성", type="primary", use_container_width=True, key="btn_desc_gen"):
                 with st.spinner("왕실 카피라이터 작성 중..."):
                     b64 = base64.b64encode(img_bytes).decode("utf-8")
-                    desc = call_claude_api({"max_tokens":2000,"messages":[{"role":"user","content":[
+                    desc = call_claude_api({"max_tokens":4096,"messages":[{"role":"user","content":[
                         {"type":"image","source":{"type":"base64","media_type":j_file.type,"data":b64}},
                         {"type":"text","text":f"당신은 매출을 10배 올려주는 이커머스 카피라이터입니다.\n타겟:{target} / 톤:{tone} / 포인트:{p_info if p_info else '이미지 분석 기반'}"}
                     ]}]})
@@ -929,7 +929,7 @@ elif 메뉴 == "🕵️‍♂️ 경쟁사 리뷰 분석기":
 ### 📦 상세페이지 구성 순서 추천"""
 
             with st.spinner("경쟁사 완전 해부 중..."):
-                result = call_claude_api({"max_tokens":2000,"messages":[{"role":"user","content":prompt}]})
+                result = call_claude_api({"max_tokens":4096,"messages":[{"role":"user","content":prompt}]})
             if result:
                 st.divider()
                 color = "#03C75A" if "호평만" in 분석모드 else "#ff4b4b" if "악평만" in 분석모드 else "#ffd700"
@@ -1307,7 +1307,7 @@ elif 메뉴 == "🏷️ 상품명 최적화":
 ],
 "avoid":["피해야할표현1","피해야할표현2","피해야할표현3"],
 "tip":"상위노출 핵심 팁 한 줄"}}"""
-                res = call_claude_api({"max_tokens":2000,"messages":[{"role":"user","content":prompt}]})
+                res = call_claude_api({"max_tokens":4096,"messages":[{"role":"user","content":prompt}]})
 
             if res:
                 try:
@@ -1473,6 +1473,8 @@ elif 메뉴 == "🔬 경쟁사 상품명 역분석":
                 with st.spinner("AI가 상위노출 패턴 해독 중..."):
                     titles_text = "\n".join([f"{i}. {t}" for i,t in enumerate(titles_list,1)])
                     prompt = f"""당신은 네이버 쇼핑 SEO 전문가입니다.
+⚠️ 출력 규칙: ###, **, - 등 마크다운만 사용. 코드블록(```)과 취소선(~~) 절대 사용 금지. 숫자 범위는 반드시 '28자~38자', '5,000원~12,000원' 형식으로 쓰세요.
+
 '{rev_kw}' 키워드의 네이버 쇼핑 상위 {len(titles_list)}개 상품명을 분석하여 상위노출 패턴을 해독하세요.
 
 [수집된 상품명]
@@ -1480,10 +1482,12 @@ elif 메뉴 == "🔬 경쟁사 상품명 역분석":
 
 ### 🔑 핵심 공통 키워드 TOP 10 (등장 빈도 포함)
 ### 📐 상위노출 상품명 구조 패턴 (도식화)
+### 🔢 글자수 분석 (평균·최적 구간·권장사항)
 ### ⚡ 차별화 기회 — 아무도 안 쓴 키워드
 ### 🏆 이 분석 기반 최적 상품명 3가지 제안
-### 📊 가격대 분석 및 우리의 최적 포지션"""
-                    result = call_claude_api({"max_tokens":2000,"messages":[{"role":"user","content":prompt}]})
+### 📊 가격대 분석 및 우리의 최적 포지션
+### 🎯 롱테일 키워드 추천 10개 (검색량·경쟁도 관점)"""
+                    result = call_claude_api({"max_tokens":4096,"messages":[{"role":"user","content":prompt}]})
 
                 if result:
                     st.divider()
