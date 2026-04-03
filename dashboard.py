@@ -109,7 +109,7 @@ def call_claude_api(body):
         if resp.status_code == 200:
             text = resp.json()["content"][0]["text"].strip()
             text = re.sub(r'```[^\n]*\n?', '', text)
-            text = text.replace('~~', '~')   # ✅ 취소선 기호 제거
+            text = text.replace('~~', '~')     # ✅ 취소선 → 물결 하나로 교체
             return text.strip()
         return None
     except:
@@ -614,7 +614,7 @@ def ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수):
 이번달 70% + 다음달 선제 30% 비율로 추천하세요.
 [출력] JSON 배열만. 설명 없음.
 [{{"keyword":"키워드","reason":"추천이유(시즌연관성포함)","price_range":"소싱가~판매가","season":"이번달/다음달선제"}}]"""
-    res = call_claude_api({"max_tokens":2000,"messages":[{"role":"user","content":prompt}]})
+    res = call_claude_api({"max_tokens":3000,"messages":[{"role":"user","content":prompt}]})
     if res:
         try:
             결과 = json.loads(res.replace("```json","").replace("```","").strip())
