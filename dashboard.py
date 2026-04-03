@@ -132,52 +132,52 @@ def 필터링(items, 배송비=0):
     return 결과
 
 def 도매꾹검색(검색어, 개수=20):
-    url    = "https://domeggook.com/ssl/api/"
-    params = {"ver":"4.1","mode":"getItemList","aid":DOMEGGOOK_API_KEY,
-              "market":"dome","om":"json","kw":검색어,"sz":개수}
-    try:
-        data = requests.get(url, params=params).json()
+    url = "https://domeggook.com/ssl/api/"
 
-        # ✅ 단계별 안전 접근
-        domeggook = data.get('domeggook', {})
-        list_data = domeggook.get('list', {})
-        
-        # list가 None이거나 item이 없는 경우 처리
-        if not list_data or 'item' not in list_data:
+    def _fetch(kw):
+        params = {"ver":"4.1","mode":"getItemList","aid":DOMEGGOOK_API_KEY,
+                  "market":"dome","om":"json","kw":kw,"sz":개수}
+        try:
+            data      = requests.get(url, params=params, timeout=10).json()
+            list_data = data.get('domeggook',{}).get('list',{})
+            if not list_data:
+                return []
+            items = list_data.get('item')
+            if not items:
+                return []
+            if isinstance(items, dict):
+                items = [items]
+            결과 = []
+            for item in items:
+                p = int(item.get('price') or 0)
+                f = int((item.get('deli') or {}).get('fee') or 0)
+                if (item.get('deli') or {}).get('who') == 'S':
+                    f = 0
+                if p <= 0:
+                    continue
+                결과.append({
+                    "제목":   item.get('title',''),
+                    "가격":   p, "배송비": f, "총가격": p+f,
+                    "이미지": item.get('thumb',''),
+                    "링크":   item.get('url',''),
+                    "출처":   "도매꾹"
+                })
+            return sorted(결과, key=lambda x: x['총가격'])
+        except Exception as e:
             return []
-        
-        items = list_data['item']
-        
-        # item이 None인 경우
-        if items is None:
-            return []
-        
-        if isinstance(items, dict): 
-            items = [items]
 
-        결과 = []
-        for item in items:
-            p = int(item.get('price', 0) or 0)
-            f = int(item.get('deli', {}).get('fee', 0) or 0)
-            if item.get('deli', {}).get('who', '') == 'S': 
-                f = 0
-            if p <= 0:  # ✅ 가격 0원 상품 제외
-                continue
-            결과.append({
-                "제목":   item.get('title', ''),
-                "가격":   p,
-                "배송비": f,
-                "총가격": p + f,
-                "이미지": item.get('thumb', ''),
-                "링크":   item.get('url', ''),
-                "출처":   "도매꾹"
-            })
-        return sorted(결과, key=lambda x: x['총가격'])
+    # 1차 시도: 원래 검색어
+    결과 = _fetch(검색어)
 
-    except Exception as e:
-        # ✅ 오류 내용을 확인할 수 있게
-        st.warning(f"도매꾹 검색 오류: {e}")
-        return []
+    # 2차 시도: 결과 없으면 첫 번째 단어만으로 재시도
+    if not 결과 and ' ' in 검색어:
+        첫단어 = 검색어.split()[0]
+        결과 = _fetch(첫단어)
+        if 결과:
+            # 검색 성공 시 원래 키워드와 관련 있는 것만 필터 (선택적)
+            pass
+
+    return 결과
 
 def 검색_11번가(검색어, 개수=20):
     url    = "http://openapi.11st.co.kr/openapi/OpenApiService.tmall"
