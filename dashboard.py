@@ -1272,16 +1272,52 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
     <b style="color:#ffd700;">🔄 자동 파이프라인 순서</b><br>
     <span style="color:#ccc;font-size:.9rem;">
     ① 키워드 입력 &nbsp;→&nbsp;
-    ② 경쟁사 상품명 수집·분석 &nbsp;→&nbsp;
-    ③ 소싱 최저가 조회 &nbsp;→&nbsp;
-    ④ 리뷰 분석 (선택) &nbsp;→&nbsp;
-    ⑤ 슈퍼 AI 통합 기획 &nbsp;→&nbsp;
-    ⑥ 썸네일 자동 생성 &nbsp;→&nbsp;
-    ⑦ 완성 HTML 패키지 다운로드
+    ② 블루오션 HTML 첨부 (선택·강력추천) &nbsp;→&nbsp;
+    ③ 경쟁사 상품명 수집·분석 &nbsp;→&nbsp;
+    ④ 소싱 최저가 조회 &nbsp;→&nbsp;
+    ⑤ 리뷰 분석 (선택) &nbsp;→&nbsp;
+    ⑥ 슈퍼 AI 통합 기획 &nbsp;→&nbsp;
+    ⑦ 썸네일 자동 생성 &nbsp;→&nbsp;
+    ⑧ 완성 HTML 패키지 다운로드
     </span></div>""", unsafe_allow_html=True)
 
     # ── 입력 영역 ─────────────────────────────────────────────────
     pkg_kw = st.text_input("📦 등록할 상품 키워드", placeholder="예: 실리콘 얼음틀, 무선 가습기, 캠핑 랜턴", key="pkg_kw")
+
+    # ── 블루오션 HTML 첨부 ────────────────────────────────────────
+    st.markdown("""
+    <div style="background:rgba(3,199,90,0.07);border:1px solid rgba(3,199,90,0.25);
+    border-radius:10px;padding:12px 18px;margin-bottom:12px;">
+    <b style="color:#03C75A;">📄 블루오션 자동추천 HTML 첨부 (강력 추천)</b><br>
+    <span style="color:#aaa;font-size:.85rem;">
+    💎 블루오션 탐지 메뉴의 STEP3에서 다운로드한 HTML 파일을 첨부하면,<br>
+    기존 기획안을 기반으로 AI가 훨씬 더 깊고 구체적으로 업그레이드합니다.
+    </span></div>""", unsafe_allow_html=True)
+
+    uploaded_html = st.file_uploader(
+        "📎 블루오션 STEP3 HTML 파일 첨부",
+        type=["html"], key="pkg_html",
+        help="블루오션 탐지 → AI 자동 일일추천 → STEP3에서 다운로드한 파일"
+    )
+
+    # HTML 파싱해서 텍스트 추출
+    prev_draft = ""
+    if uploaded_html:
+        try:
+            raw_html  = uploaded_html.read().decode('utf-8')
+            # HTML 태그 제거 → 순수 텍스트 추출
+            text_only = re.sub(r'<style[^>]*>.*?</style>', ' ', raw_html, flags=re.DOTALL)
+            text_only = re.sub(r'<script[^>]*>.*?</script>', ' ', text_only, flags=re.DOTALL)
+            text_only = re.sub(r'<[^>]+>', ' ', text_only)
+            text_only = re.sub(r'&[a-z]+;', ' ', text_only)
+            text_only = re.sub(r'\s+', ' ', text_only).strip()
+            # 핵심 내용만 최대 4000자 (프롬프트 토큰 절약)
+            prev_draft = text_only[:4000]
+            st.success(f"✅ 기존 기획안 로드 완료 ({len(prev_draft):,}자) — AI가 이 내용을 기반으로 업그레이드합니다!")
+            with st.expander("📋 인식된 기존 기획안 내용 미리보기"):
+                st.text(prev_draft[:800] + "..." if len(prev_draft) > 800 else prev_draft)
+        except Exception as e:
+            st.warning(f"HTML 파싱 오류: {e} — 첨부 없이 진행합니다.")
 
     col_p1, col_p2, col_p3 = st.columns(3)
     pkg_target  = col_p1.selectbox("주 타겟", ["전체","육아맘","자취생","직장인","캠퍼","시니어"], key="pkg_target")
@@ -1348,8 +1384,25 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
         if not review_section:
             review_section = "\n[리뷰 없음 — 키워드와 카테고리 기반으로 고객 심리를 추론하세요]\n"
 
+        # ── 첨부 HTML 유무에 따라 프롬프트 분기 ──────────────────
+        if prev_draft:
+            draft_section = f"""
+[📄 기존 상세페이지 초안 — 이것을 기반으로 업그레이드하세요]
+{prev_draft}
+
+⚠️ 위 초안은 이미 AI가 한 번 작성한 기획안입니다.
+아래 추가 데이터(경쟁사 분석·리뷰·소싱)를 반영하여:
+- 초안의 좋은 내용은 유지하되 더 구체적으로 발전시키세요
+- 초안에서 부족한 부분(경쟁사 차별화, 키워드 최적화, 가격전략)을 보완하세요
+- 상품 특징과 후킹 카피는 경쟁사 리뷰 데이터를 반영해 완전히 새롭게 작성하세요
+"""
+            mode_instruction = "기존 초안을 기반으로 경쟁사 데이터까지 반영한 최종 업그레이드 버전을 작성하세요."
+        else:
+            draft_section = ""
+            mode_instruction = "아래 모든 데이터를 반영하여 완전한 상품 기획안을 처음부터 작성하세요."
+
         super_prompt = f"""당신은 네이버 쇼핑 SEO 전문가 + 탑티어 이커머스 카피라이터 + MD의 역할을 동시에 수행합니다.
-아래 모든 데이터를 종합 분석하여 즉시 스마트스토어에 등록 가능한 완전한 상품 기획안을 작성하세요.
+{mode_instruction}
 
 [📦 상품 기본 정보]
 - 키워드: {pkg_kw}
@@ -1363,35 +1416,39 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
 
 [💬 경쟁사 리뷰 데이터]
 {review_section}
+{draft_section}
 
-위 모든 데이터를 반영하여 아래 형식으로 출력하세요:
+아래 형식으로 출력하세요:
 
 ### 🏷️ SEO 최적 상품명 TOP 3
 (경쟁사 공통 키워드 계승 + 차별화 요소 추가, 각 100자 이내)
 
 ### 🔑 경쟁사 분석 — 상위노출 핵심 패턴
-(경쟁사 상품명에서 반복되는 키워드 TOP 5와 우리가 써야 할 이유)
+(경쟁사 상품명에서 반복되는 키워드 TOP 5 + 우리가 써야 할 이유)
 
 ### 🚨 고객 Pain Point & 우리의 해결책
-(리뷰 기반 또는 카테고리 추론 — 결핍 3가지 + 해결책 3가지)
+(리뷰 기반 결핍 3가지 + 우리 상품의 해결책 3가지)
 
 ### 💎 핵심 셀링포인트 5가지
-(경쟁사가 못하는 것 + 고객이 원하는 것 교차점)
+(경쟁사가 못하는 것 + 고객이 원하는 것 교차점 — 구체적 근거 포함)
 
 ### 📝 상단 후킹 문구 3선
-(첫 3초 안에 스크롤을 멈추게 만드는 카피)
+(첫 3초 안에 스크롤을 멈추게 만드는 카피 — Pain Point 직격)
 
-### ✅ 상품 특징 설명 (5가지)
-(구체적 스펙·소재·크기·기능 포함)
+### ✅ 상품 특징 상세 설명 (7가지)
+(소재·크기·기능·인증·사용법 등 구체적 스펙 포함)
+
+### 🛒 상세페이지 섹션별 카피 초안
+(썸네일~마지막 CTA까지 각 섹션 제목 + 본문 문구)
 
 ### 🎯 추천 검색 키워드 15개
-(네이버 쇼핑 검색량 높은 순, 롱테일 포함)
+(메인 키워드 5개 + 세부 키워드 5개 + 롱테일 5개)
 
 ### 💰 가격 전략
-(경쟁사 가격대 분석 기반 최적 판매가 + 묶음 전략)
+(경쟁사 가격대 분석 기반 최적 판매가 + 묶음 전략 + 할인 구조)
 
-### 📦 상세페이지 구성 순서 (7단계)
-(고객 구매 심리 흐름에 맞춘 최적 배치 순서)"""
+### 📦 상세페이지 구성 순서 (8단계)
+(고객 구매 심리 흐름에 맞춘 섹션 배치 + 각 섹션 역할 설명)"""
 
         with st.spinner("AI가 모든 데이터를 통합 분석 중... (20~30초 소요)"):
             result = call_claude_api({"max_tokens": 3000,
@@ -1456,6 +1513,7 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
         st.markdown("### 📥 STEP 6 — 완성 패키지 다운로드")
         today_str   = datetime.now().strftime('%Y년 %m월 %d일')
         safe_kw     = re.sub(r'[^\w가-힣]','_', pkg_kw)
+        upgrade_badge = '<div class="step" style="background:rgba(3,199,90,.15);border-color:rgba(3,199,90,.4);color:#03C75A;">✅ 블루오션 초안 업그레이드</div>' if prev_draft else ''
         result_html = result
         result_html = re.sub(r'### (.+)',       r'<h3>\1</h3>', result_html)
         result_html = re.sub(r'## (.+)',        r'<h2>\1</h2>', result_html)
@@ -1540,6 +1598,7 @@ footer strong{{color:#ffd700}}
   <div class="step">📝 상세페이지</div>
   <div class="step">🎯 키워드 15개</div>
   <div class="step">💰 가격 전략</div>
+  {upgrade_badge}
 </div>
 <main>
   {sourcing_html}
