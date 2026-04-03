@@ -108,8 +108,8 @@ def call_claude_api(body):
                              headers=headers, json=body, timeout=180)
         if resp.status_code == 200:
             text = resp.json()["content"][0]["text"].strip()
-            # ✅ 코드블록 전처리 — 앱 전체 일괄 적용
             text = re.sub(r'```[^\n]*\n?', '', text)
+            text = text.replace('~~', '')   # ✅ 취소선 기호 제거
             return text.strip()
         return None
     except:
@@ -1783,7 +1783,7 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
 
         super_prompt = f"""당신은 네이버 쇼핑 SEO 전문가 + 탑티어 이커머스 카피라이터 + MD의 역할을 동시에 수행합니다.
 {mode_instruction}
-⚠️ 출력 규칙: ###, **, - 등 마크다운만 사용하세요. 코드블록(```)은 절대 사용 금지입니다.
+⚠️ 출력 규칙: ###, **, - 등 마크다운만 사용하세요. 코드블록(```)과 취소선(~~)은 절대 사용 금지. 가격 범위는 반드시 '5,000원~12,000원' 형식으로 쓰세요.
 
 [📦 상품 기본 정보]
 - 키워드: {effective_kw}
