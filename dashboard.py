@@ -1798,7 +1798,7 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
 (고객 구매 심리 흐름에 맞춘 섹션 배치 + 각 섹션 역할 설명)"""
 
         with st.spinner("AI가 모든 데이터를 통합 분석 중... (20~30초 소요)"):
-            result = call_claude_api({"max_tokens": 3000,
+            result = call_claude_api({"max_tokens": 4096,
                                       "messages": [{"role":"user","content": super_prompt}]})
         if not result:
             st.error("AI 분석 실패. 다시 시도해주세요.")
@@ -1853,7 +1853,7 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
         # ── STEP 6: HTML 패키지 생성 + 다운로드 ──────────────────
         st.markdown("### 📥 STEP 6 — 완성 패키지 다운로드")
         today_str   = datetime.now().strftime('%Y년 %m월 %d일')
-        safe_kw     = re.sub(r'[^\w가-힣]','_', pkg_kw)
+        safe_kw     = re.sub(r'[^\w가-힣]','_', effective_kw)   # ✅ pkg_kw → effective_kw
         upgrade_badge = '<div class="step" style="background:rgba(3,199,90,.15);border-color:rgba(3,199,90,.4);color:#03C75A;">✅ 블루오션 초안 업그레이드</div>' if prev_draft else ''
         result_html = result
         result_html = re.sub(r'### (.+)',       r'<h3>\1</h3>', result_html)
@@ -1883,7 +1883,7 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
         html_pkg = f"""<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>👑 {pkg_kw} — 원클릭 등록 패키지</title>
+<title>👑 {effective_kw} — 원클릭 등록 패키지</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@700;900&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
@@ -1928,7 +1928,7 @@ footer strong{{color:#ffd700}}
 @media(max-width:600px){{main{{padding:24px 16px 60px}}.card{{padding:20px 18px}}}}
 </style></head><body>
 <header class="fu">
-  <h1>👑 {pkg_kw}</h1>
+  <h1>👑 {effective_kw}</h1>
   <p class="sub">원클릭 등록 패키지 · {today_str} · 위탁의왕 Ultra</p>
 </header>
 <div class="steps">
