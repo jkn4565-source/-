@@ -105,7 +105,7 @@ def call_claude_api(body):
         }
         body["model"] = "claude-sonnet-4-6"
         resp = requests.post("https://api.anthropic.com/v1/messages",
-                             headers=headers, json=body, timeout=80)
+                             headers=headers, json=body, timeout=180)
         if resp.status_code == 200:
             text = resp.json()["content"][0]["text"].strip()
             # ✅ 코드블록 전처리 — 앱 전체 일괄 적용
