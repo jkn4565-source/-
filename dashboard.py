@@ -90,6 +90,7 @@ if 'helper_generated_text' not in st.session_state: st.session_state['helper_gen
 if 'keyword_input'         not in st.session_state: st.session_state['keyword_input'] = ""
 if 'keywords_list'         not in st.session_state: st.session_state['keywords_list'] = []
 if 'run_search'            not in st.session_state: st.session_state['run_search'] = False
+if 'pkg_outputs'           not in st.session_state: st.session_state['pkg_outputs'] = {}
 
 # ==========================================
 # 🛠️ 4. 핵심 함수 모음
@@ -1523,55 +1524,88 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
 
     # ── HTML 파서 함수 ────────────────────────────────────────────
     def parse_blueocean_html(raw_html):
-        """블루오션 STEP3 HTML에서 키워드·소싱 정보·AI 내용 추출"""
+        """블루오션 STEP3 / 등록패키지 HTML에서 키워드·소싱 정보·AI 내용 추출"""
         result = {"keyword":"", "price":0, "source":"", "link":"#", "image":"", "draft":""}
 
-        # 키워드 — <title> 태그에서 추출
-        m = re.search(r'<title>[^—\-]*[—\-]\s*([^<]+)</title>', raw_html)
+        # ── 키워드 추출 ───────────────────────────────────────────
+        # title: "👑 피크닉 돗자리 방수 대형 — 원클릭 등록 패키지" → 대시 앞부분
+        m = re.search(r'<title>👑\s*([^—\-<]+?)(?:\s*[—\-]|</title>)', raw_html)
         if m:
             result["keyword"] = m.group(1).strip()
-
-        # 키워드 — <h1> 에서도 시도
+        # h1 fallback: "👑 피크닉 돗자리 방수 대형"
         if not result["keyword"]:
             m = re.search(r'<h1[^>]*>👑\s*([^<]+)</h1>', raw_html)
             if m:
                 result["keyword"] = m.group(1).strip()
 
-        # 소싱가·출처 — "소싱가: N,NNN원 (출처)" 패턴
-        m = re.search(r'소싱가[^:]*:\s*([\d,]+)원[^(]*\(([^)]+)\)', raw_html)
+        # ── HTML 태그 제거 후 텍스트로 검색 (strong, div 등 무관하게 동작) ──
+        plain = re.sub(r'<[^>]+>', ' ', raw_html)
+        plain = re.sub(r'\s+', ' ', plain).strip()
+
+        # 패턴 1: "소싱가: N,NNN원 (출처)"  ← 상세페이지 HTML
+        m = re.search(r'소싱가\s*:\s*([\d,]+)원\s*\(([^)]{1,20})\)', plain)
         if m:
             result["price"]  = int(m.group(1).replace(',',''))
             result["source"] = m.group(2).strip()
 
-        # 소싱처 링크 — class="sb" 버튼의 href
-        m = re.search(r'class="sb"[^>]*href="([^"]+)"', raw_html)
+        # 패턴 2: "단가 N,NNN원" + "출처: XXX"  ← 등록패키지 HTML
+        if not result["price"]:
+            m1 = re.search(r'단가\s*([\d,]+)원', plain)
+            m2 = re.search(r'출처:\s*([가-힣A-Za-z0-9]{2,10})', plain)
+            if m1 and m2:
+                result["price"]  = int(m1.group(1).replace(',',''))
+                result["source"] = m2.group(1).strip()
+
+        # 패턴 3: "N,NNN원 (출처)" 범용 fallback
+        if not result["price"]:
+            m = re.search(r'([\d,]{4,})\s*원\s*\(([가-힣A-Za-z0-9]{2,10})\)', plain)
+            if m:
+                p = int(m.group(1).replace(',',''))
+                if 500 <= p <= 9_999_999:
+                    result["price"]  = p
+                    result["source"] = m.group(2).strip()
+
+        # ── 소싱처 링크 ───────────────────────────────────────────
+        m = re.search(r'href="(https?://[^"]+)"[^>]*class="sb"', raw_html)
         if not m:
-            m = re.search(r'href="([^"]+)"[^>]*class="sb"', raw_html)
-        if not m:  # 소싱처 바로가기 텍스트 근처
+            m = re.search(r'class="sb"[^>]*href="(https?://[^"]+)"', raw_html)
+        if not m:
             m = re.search(r'href="(https?://[^"]+)"[^>]*>🛒', raw_html)
+        if not m:  # 등록패키지 스타일 링크
+            m = re.search(r'target="_blank"[^>]*href="(https?://[^"]+)"', raw_html)
+        if not m:
+            m = re.search(r'href="(https?://(?:domeggook|11st|smartstore|gmarket|auction)[^"]+)"', raw_html)
         if m:
             result["link"] = m.group(1)
 
-        # 소싱 이미지 — ic 카드 안의 <img>
-        m = re.search(r'class="ic[^"]*".*?<img\s+src="([^"]+)"', raw_html, re.DOTALL)
+        # ── 소싱 이미지 ───────────────────────────────────────────
+        m = re.search(r'class="ic[^"]*".*?<img\s+src="(https?://[^"]+)"', raw_html, re.DOTALL)
+        if not m:
+            m = re.search(r'display:flex.*?<img\s+src="(https?://[^"]+)"', raw_html, re.DOTALL)
+        if not m:
+            m = re.search(r'<img\s+src="(https?://(?:cdn|img)[^"]+)"', raw_html)
         if not m:
             m = re.search(r'<img\s+src="(https?://[^"]+)"', raw_html)
         if m:
             result["image"] = m.group(1)
 
-        # AI 기획안 텍스트 — <div class="ab"> 내용
-        m = re.search(r'class="ab"[^>]*>(.*?)</div>', raw_html, re.DOTALL)
+        # ── AI 기획안 텍스트 ──────────────────────────────────────
+        # .ab div (상세페이지 HTML)
+        m = re.search(r'class="ab"[^>]*>(.*?)</div>\s*</div>', raw_html, re.DOTALL)
         if m:
             txt = re.sub(r'<[^>]+>',' ', m.group(1))
-            txt = re.sub(r'\s+',' ', txt).strip()
-            result["draft"] = txt[:3500]
+            result["draft"] = re.sub(r'\s+',' ', txt).strip()[:2500]
         else:
-            # fallback: 전체 텍스트에서 CSS·JS 제거 후 추출
-            txt = re.sub(r'<style[^>]*>.*?</style>', ' ', raw_html, flags=re.DOTALL)
-            txt = re.sub(r'<script[^>]*>.*?</script>', ' ', txt, flags=re.DOTALL)
-            txt = re.sub(r'<[^>]+>',' ', txt)
-            txt = re.sub(r'\s+',' ', txt).strip()
-            result["draft"] = txt[:3500]
+            # 마지막 .card 내용 (등록패키지 HTML)
+            cards = re.findall(r'<div class="card[^"]*">(.*?)</div>\s*</div>', raw_html, re.DOTALL)
+            if cards:
+                txt = re.sub(r'<[^>]+>',' ', cards[-1])
+                result["draft"] = re.sub(r'\s+',' ', txt).strip()[:2500]
+            else:
+                # 전체 fallback
+                txt = re.sub(r'<style[^>]*>.*?</style>','', raw_html, flags=re.DOTALL)
+                txt = re.sub(r'<[^>]+>',' ', txt)
+                result["draft"] = re.sub(r'\s+',' ', txt).strip()[:2500]
 
         return result
 
@@ -1797,63 +1831,16 @@ elif 메뉴 == "🎯 원클릭 등록 패키지":
 ### 📦 상세페이지 구성 순서 (8단계)
 (고객 구매 심리 흐름에 맞춘 섹션 배치 + 각 섹션 역할 설명)"""
 
-        with st.spinner("AI가 모든 데이터를 통합 분석 중... (20~30초 소요)"):
-            result = call_claude_api({"max_tokens": 4096,
+        with st.spinner("AI가 모든 데이터를 통합 분석 중... (30~50초 소요)"):
+            result = call_claude_api({"max_tokens": 8192,
                                       "messages": [{"role":"user","content": super_prompt}]})
         if not result:
             st.error("AI 분석 실패. 다시 시도해주세요.")
             st.stop()
 
-        st.success("✅ AI 통합 분석 완료!")
-
-        # ── STEP 4: 결과 표시 ─────────────────────────────────────
-        st.markdown("### 📋 STEP 4 — 완성 기획안")
-        st.markdown(result)
-        st.divider()
-        st.text_area("📋 텍스트 복사하기", value=result, height=200, key="pkg_copy")
-
-        # ── STEP 5: 썸네일 자동 생성 ─────────────────────────────
-        st.markdown("### 🖼️ STEP 5 — 썸네일 자동 생성")
-        thumb_img = None
-        thumb_img_url = 소싱.get('이미지','') if 소싱 else ''
-
-        if thumb_img_url:
-            with st.spinner("소싱 이미지로 썸네일 합성 중..."):
-                try:
-                    r = requests.get(thumb_img_url, timeout=10)
-                    if r.status_code == 200:
-                        pil = Image.open(io.BytesIO(r.content)).convert("RGBA")
-                        pil = pil.resize((800,800), Image.LANCZOS)
-                        ov  = Image.new("RGBA",(800,800),(0,0,0,0))
-                        od  = ImageDraw.Draw(ov)
-                        for idx_i in range(220):
-                            od.rectangle([0,800-220+idx_i,800,801-220+idx_i],
-                                         fill=(0,0,0,int(185*(idx_i/220))))
-                        pil  = Image.alpha_composite(pil, ov)
-                        draw = ImageDraw.Draw(pil)
-                        try:
-                            fm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
-                            fs = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
-                        except:
-                            fm = fs = ImageFont.load_default()
-                        label_kw = effective_kw[:16]
-                        bb = draw.textbbox((0,0), label_kw, font=fm)
-                        draw.text(((800-(bb[2]-bb[0]))//2, 620), label_kw, font=fm, fill=(255,215,0))
-                        price_txt = f"소싱가 {소싱['총가격']:,}원" if 소싱 else ""
-                        if price_txt:
-                            bb2 = draw.textbbox((0,0), price_txt, font=fs)
-                            draw.text(((800-(bb2[2]-bb2[0]))//2, 675), price_txt, font=fs, fill=(3,199,90))
-                        thumb_img = pil.convert("RGB")
-                        st.image(thumb_img, width=300, caption="자동 생성된 썸네일")
-                except Exception as e:
-                    st.warning(f"썸네일 자동 생성 실패: {e}")
-        else:
-            st.info("💡 소싱 이미지가 없어 썸네일을 건너뜁니다. 썸네일 메이커 메뉴를 이용해주세요.")
-
-        # ── STEP 6: HTML 패키지 생성 + 다운로드 ──────────────────
-        st.markdown("### 📥 STEP 6 — 완성 패키지 다운로드")
+        # ── 결과를 session_state에 저장 (다운로드 후 유지) ───────
         today_str   = datetime.now().strftime('%Y년 %m월 %d일')
-        safe_kw     = re.sub(r'[^\w가-힣]','_', effective_kw)   # ✅ pkg_kw → effective_kw
+        safe_kw     = re.sub(r'[^\w가-힣]','_', effective_kw)
         upgrade_badge = '<div class="step" style="background:rgba(3,199,90,.15);border-color:rgba(3,199,90,.4);color:#03C75A;">✅ 블루오션 초안 업그레이드</div>' if prev_draft else ''
         result_html = result
         result_html = re.sub(r'### (.+)',       r'<h3>\1</h3>', result_html)
@@ -1959,39 +1946,111 @@ footer strong{{color:#ffd700}}
 <footer>Generated by <strong>👑 위탁의왕 Ultra</strong> · Powered by Claude AI · {today_str}</footer>
 </body></html>"""
 
-        # HTML 다운로드
-        col_d1, col_d2 = st.columns(2)
-        with col_d1:
-            st.download_button(
-                "📥 완성 패키지 HTML 다운로드",
-                data=html_pkg,
-                file_name=f"등록패키지_{safe_kw}_{datetime.now().strftime('%Y%m%d')}.html",
-                mime="text/html",
-                use_container_width=True,
-                type="primary"
-            )
-        # 썸네일 다운로드
-        if thumb_img:
-            buf = io.BytesIO()
-            thumb_img.save(buf, format="JPEG", quality=95)
-            buf.seek(0)
-            with col_d2:
-                st.download_button(
-                    "🖼️ 썸네일 다운로드 (800×800)",
-                    data=buf.getvalue(),
-                    file_name=f"썸네일_{safe_kw}_{datetime.now().strftime('%Y%m%d')}.jpg",
-                    mime="image/jpeg",
-                    use_container_width=True
-                )
+        # ── 썸네일 생성 후 bytes로 저장 ──────────────────────────
+        thumb_bytes = None
+        thumb_img_url = 소싱.get('이미지','') if 소싱 else ''
+        if thumb_img_url:
+            try:
+                r = requests.get(thumb_img_url, timeout=10)
+                if r.status_code == 200:
+                    pil = Image.open(io.BytesIO(r.content)).convert("RGBA")
+                    pil = pil.resize((800,800), Image.LANCZOS)
+                    ov  = Image.new("RGBA",(800,800),(0,0,0,0))
+                    od  = ImageDraw.Draw(ov)
+                    for idx_i in range(220):
+                        od.rectangle([0,800-220+idx_i,800,801-220+idx_i],
+                                     fill=(0,0,0,int(185*(idx_i/220))))
+                    pil  = Image.alpha_composite(pil, ov)
+                    draw = ImageDraw.Draw(pil)
+                    try:
+                        fm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
+                        fs = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+                    except:
+                        fm = fs = ImageFont.load_default()
+                    label_kw = effective_kw[:16]
+                    bb = draw.textbbox((0,0), label_kw, font=fm)
+                    draw.text(((800-(bb[2]-bb[0]))//2, 620), label_kw, font=fm, fill=(255,215,0))
+                    if 소싱:
+                        price_txt = f"소싱가 {소싱['총가격']:,}원"
+                        bb2 = draw.textbbox((0,0), price_txt, font=fs)
+                        draw.text(((800-(bb2[2]-bb2[0]))//2, 675), price_txt, font=fs, fill=(3,199,90))
+                    buf = io.BytesIO()
+                    pil.convert("RGB").save(buf, format="JPEG", quality=95)
+                    thumb_bytes = buf.getvalue()
+            except Exception as e:
+                st.warning(f"썸네일 생성 실패: {e}")
 
-        # 서버 저장
+        # ── 서버 저장 ─────────────────────────────────────────────
         save_dir = "등록패키지_저장"
         os.makedirs(save_dir, exist_ok=True)
         pkg_path = os.path.join(save_dir, f"등록패키지_{safe_kw}_{datetime.now().strftime('%Y%m%d%H%M')}.html")
         with open(pkg_path, 'w', encoding='utf-8') as f:
             f.write(html_pkg)
-        st.success(f"✅ 서버 저장 완료: `{pkg_path}`")
 
+        # ✅ 모든 결과를 session_state에 저장 → 다운로드 후에도 유지
+        st.session_state['pkg_outputs'] = {
+            'result':       result,
+            'html_pkg':     html_pkg,
+            'thumb_bytes':  thumb_bytes,
+            'safe_kw':      safe_kw,
+            'effective_kw': effective_kw,
+            'pkg_path':     pkg_path,
+            'today_str':    today_str,
+        }
+        st.rerun()   # ← 재실행해서 아래 결과 표시 블록으로 이동
+
+    # ── 결과 표시 (session_state 기반 — 다운로드 후에도 유지) ────
+    out = st.session_state.get('pkg_outputs', {})
+    if out:
+        st.divider()
+
+        # 헤더 + 초기화 버튼
+        col_hd, col_clr = st.columns([4, 1])
+        with col_hd:
+            st.markdown(f"### ✅ `{out['effective_kw']}` 패키지 완성")
+        with col_clr:
+            if st.button("🗑️ 결과 초기화", key="btn_clear_pkg", type="secondary"):
+                st.session_state['pkg_outputs'] = {}
+                st.rerun()
+
+        # STEP 4: 기획안
+        st.markdown("### 📋 STEP 4 — 완성 기획안")
+        st.markdown(out['result'])
+        st.divider()
+        st.text_area("📋 텍스트 복사하기", value=out['result'], height=200, key="pkg_copy")
+
+        # STEP 5: 썸네일
+        st.markdown("### 🖼️ STEP 5 — 썸네일")
+        if out.get('thumb_bytes'):
+            st.image(out['thumb_bytes'], width=300, caption="자동 생성된 썸네일")
+        else:
+            st.info("💡 소싱 이미지가 없어 썸네일을 건너뜁니다. 썸네일 메이커 메뉴를 이용해주세요.")
+
+        # STEP 6: 다운로드 (session_state에서 읽어서 재실행 후에도 버튼 유지)
+        st.markdown("### 📥 STEP 6 — 완성 패키지 다운로드")
+        col_d1, col_d2 = st.columns(2)
+        with col_d1:
+            st.download_button(
+                "📥 완성 패키지 HTML 다운로드",
+                data=out['html_pkg'],
+                file_name=f"등록패키지_{out['safe_kw']}_{out['today_str'][:10].replace('년 ','').replace('월 ','').replace('일','')}.html",
+                mime="text/html",
+                use_container_width=True,
+                type="primary",
+                key="dl_pkg_html"
+            )
+        if out.get('thumb_bytes'):
+            with col_d2:
+                st.download_button(
+                    "🖼️ 썸네일 다운로드 (800×800)",
+                    data=out['thumb_bytes'],
+                    file_name=f"썸네일_{out['safe_kw']}.jpg",
+                    mime="image/jpeg",
+                    use_container_width=True,
+                    key="dl_pkg_thumb"
+                )
+
+        st.success(f"✅ 서버 저장 완료: `{out['pkg_path']}`")
         st.markdown("""
         <div style="background:rgba(3,199,90,.08);border:1px solid rgba(3,199,90,.2);
         border-radius:10px;padding:14px 18px;margin-top:16px;">
@@ -1999,6 +2058,6 @@ footer strong{{color:#ffd700}}
         <span style="color:#ccc;font-size:.9rem;">
         1. HTML 파일을 열어 <b>SEO 상품명 TOP 3</b> 중 하나를 스마트스토어 상품명으로 사용<br>
         2. <b>추천 검색 키워드 15개</b>를 스마트스토어 검색태그에 입력<br>
-        3. <b>상세페이지 구성 순서 7단계</b>대로 이미지 제작<br>
+        3. <b>상세페이지 구성 순서 8단계</b>대로 이미지 제작<br>
         4. 다운로드한 <b>썸네일</b>을 대표이미지로 바로 업로드
         </span></div>""", unsafe_allow_html=True)
