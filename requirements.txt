@@ -1,5 +1,7 @@
 streamlit
 requests
 pandas
+Pillow
 streamlit-paste-button
-openpyxl
+gspread
+google-auth
