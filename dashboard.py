@@ -585,9 +585,13 @@ def ai_상세페이지_생성_및_저장(keyword, sourcing, reason, ocean_grade,
 
 # ── 시즌 캘린더 포함 트렌드 키워드 생성 ─────────────────────────
 def ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수):
+    import random
     사용된 = 전체_사용된_키워드()
     제외   = ", ".join(사용된) if 사용된 else "없음"
-    월 = datetime.now().month
+    월  = datetime.now().month
+    요일 = datetime.now().weekday()  # 0=월 ~ 6=일
+    주차 = datetime.now().isocalendar()[1]  # 올해 몇 번째 주
+
     시즌맵 = {
         1: ("겨울 한파·설 연휴",   ["핫팩","방한용품","새해선물","귀마개","온열제품"]),
         2: ("졸업·입학 시즌",      ["졸업선물","입학선물","책가방","문구세트","화이트데이준비"]),
@@ -602,23 +606,79 @@ def ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수):
         11:("수능·초겨울·블프",    ["수험생용품","수능선물","방한준비","블랙프라이데이","크리스마스준비"]),
         12:("연말·크리스마스",     ["크리스마스선물","연말파티","새해달력","겨울용품","연하장"]),
     }
+
+    # ── 다양성 강제 장치 ───────────────────────────────────────────
+    # 카테고리 로테이션: 요일별로 다른 세부 카테고리 집중
+    요일별_힌트 = {
+        0: "주방·식품 보관 용품 위주",
+        1: "욕실·위생·청결 용품 위주",
+        2: "수납·정리·인테리어 용품 위주",
+        3: "반려동물·육아·어린이 용품 위주",
+        4: "스포츠·아웃도어·캠핑 용품 위주",
+        5: "뷰티·헬스·다이어트 용품 위주",
+        6: "사무·학습·문구 용품 위주",
+    }
+    오늘_힌트 = 요일별_힌트.get(요일, "생활용품 전반")
+
+    # 주차 기반 랜덤 시드 → 같은 주에는 비슷하게, 다른 주에는 다르게
+    random.seed(주차 * 100 + 요일)
+    랜덤_각도 = random.choice([
+        "MZ세대가 SNS에서 공유하는 트렌디한",
+        "30~50대 주부가 재구매하는 실용적인",
+        "자취생·1인가구가 많이 찾는 소용량",
+        "캠핑·피크닉 시즌에 급상승하는",
+        "반려동물 가구가 필수로 구매하는",
+        "미니멀 라이프·정리수납 트렌드의",
+        "건강·웰빙·면역 관심층이 찾는",
+    ])
+
     다음월 = (월 % 12) + 1
     시즌명, 시즌kw      = 시즌맵.get(월, ("일반",[]))
     다음시즌명, 다음kw  = 시즌맵.get(다음월, ("일반",[]))
+
     prompt = f"""당신은 한국 스마트스토어/쿠팡 위탁판매 전문 MD입니다.
-[조건] 카테고리:{카테고리} / 가격대:{타겟가격대} / 추천:{추천수}개
-블루오션 위주, 레드오션 제외, 중복금지:[{제외}]
-[🗓️ 시즌 — 반드시 반영]
+⚠️ 매우 중요: 아래 제외 키워드와 유사한 상품은 절대 추천 금지. 비슷한 카테고리도 피하세요.
+
+[조건]
+- 카테고리: {카테고리}
+- 가격대: {타겟가격대}
+- 추천 개수: {추천수}개
+- 오늘 탐색 각도: {랜덤_각도} 상품 위주로 찾아주세요
+- 오늘 세부 카테고리 방향: {오늘_힌트}
+- 현재 {주차}주차 / {요일+1}요일 기준 신선한 아이디어 필요
+
+[🚫 절대 제외 — 이미 추천한 키워드 (유사 카테고리 전체 제외)]
+{제외 if 제외 != '없음' else '없음 (첫 실행)'}
+
+[🗓️ 시즌 반영]
 이번달({월}월): {시즌명} → 힌트: {', '.join(시즌kw)}
 다음달({다음월}월): {다음시즌명} → 선제힌트: {', '.join(다음kw[:3])}
-이번달 70% + 다음달 선제 30% 비율로 추천하세요.
+이번달 70% + 다음달 선제 30% 비율로 구성
+
+[다양성 원칙]
+- 추천 {추천수}개가 서로 다른 세부 카테고리에서 나와야 함
+- 같은 카테고리 중복 금지 (예: 칫솔 1개면 다른 구강용품 추가 금지)
+- 레드오션(무선이어폰·텀블러·보조배터리 등) 제외
+
 [출력] JSON 배열만. 설명 없음.
-[{{"keyword":"키워드","reason":"추천이유(시즌연관성포함)","price_range":"소싱가~판매가","season":"이번달/다음달선제"}}]"""
+[{{"keyword":"키워드","reason":"추천이유(시즌+각도 연관성포함)","price_range":"소싱가~판매가","season":"이번달/다음달선제"}}]"""
+
     res = call_claude_api({"max_tokens":3000,"messages":[{"role":"user","content":prompt}]})
     if res:
         try:
             결과 = json.loads(res.replace("```json","").replace("```","").strip())
-            return [it for it in 결과 if it['keyword'] not in 사용된]
+            # 제외 키워드와 정확히 일치하는 것 + 유사한 것 필터
+            필터결과 = []
+            for it in 결과:
+                kw = it['keyword']
+                # 정확히 같은 키워드 제외
+                if kw in 사용된: continue
+                # 이미 추천된 키워드의 첫 단어가 겹치면 제외 (예: "실리콘 얼음틀" → "실리콘" 계열 제외)
+                kw_첫단어 = kw.split()[0] if kw.split() else kw
+                if any(kw_첫단어 in 기존 for 기존 in 사용된 if len(kw_첫단어) > 1):
+                    continue
+                필터결과.append(it)
+            return 필터결과
         except: st.error("AI 응답 파싱 실패.")
     return []
 
@@ -1151,8 +1211,30 @@ elif 메뉴 == "💎 블루오션 탐지 + 🤖 자동추천":
             else:               st.error("🔴 레드오션입니다. 다른 키워드를 추천합니다.")
 
     with 탭2:
-        월 = datetime.now().month
-        st.caption(f"AI 트렌드 분석 → 블루오션 스캔 → 최저가 소싱 → HTML 상세페이지 자동 생성·저장 | 📅 현재 {월}월 시즌 자동 반영")
+        import random as _random
+        월   = datetime.now().month
+        요일  = datetime.now().weekday()
+        주차  = datetime.now().isocalendar()[1]
+        요일명 = ["월","화","수","목","금","토","일"][요일]
+        요일별_힌트_ui = {
+            0:"주방·식품 보관 용품",1:"욕실·위생·청결 용품",2:"수납·정리·인테리어 용품",
+            3:"반려동물·육아·어린이 용품",4:"스포츠·아웃도어·캠핑 용품",
+            5:"뷰티·헬스·다이어트 용품",6:"사무·학습·문구 용품",
+        }
+        _random.seed(주차 * 100 + 요일)
+        오늘각도 = _random.choice([
+            "MZ세대 SNS 트렌디","30~50대 주부 실용형","자취생·1인가구 소용량",
+            "캠핑·피크닉 시즌형","반려동물 가구 필수템","미니멀·정리수납형","건강·웰빙·면역형"
+        ])
+        st.caption(f"AI 트렌드 분석 → 블루오션 스캔 → 소싱 → HTML 자동 생성 | 📅 {월}월 {주차}주차 {요일명}요일")
+
+        # ── 오늘의 탐색 각도 표시 ─────────────────────────────────
+        st.markdown(f"""<div style="background:rgba(255,215,0,.07);border:1px solid rgba(255,215,0,.2);
+        border-radius:10px;padding:10px 18px;margin-bottom:14px;font-size:.88rem;">
+        🎯 <b style="color:#ffd700;">오늘의 탐색 각도</b>
+        &nbsp;—&nbsp; <span style="color:#03C75A;">{요일별_힌트_ui.get(요일,'생활용품')} · {오늘각도}</span>
+        &nbsp;&nbsp;<span style="color:#555;font-size:.78rem;">({주차}주차 {요일명}요일 기준 자동 변경)</span>
+        </div>""", unsafe_allow_html=True)
 
         cs1,cs2,cs3 = st.columns(3)
         카테고리  = cs1.selectbox("타겟 카테고리", ["자동 탐지 (AI 추천)","생활용품","주방용품","뷰티/헬스","반려동물","스포츠/레저","디지털/가전","패션잡화","유아동"], key="sel_category")
@@ -1163,18 +1245,33 @@ elif 메뉴 == "💎 블루오션 탐지 + 🤖 자동추천":
 
         이력data = 이력_로드()
         총kw수   = sum(len(v) for v in 이력data.values())
-        ch1,ch2,ch3 = st.columns([2,2,1])
+        ch1, ch2, ch3, ch4 = st.columns([2,2,1,1])
         ch1.metric("📋 누적 추천 키워드", f"{총kw수}개")
         ch2.metric("📅 추천 실행 일수", f"{len(이력data)}일")
         with ch3:
-            if st.button("🗑️ 이력 초기화", key="btn_reset_history", type="secondary"):
+            if st.button("🗑️ 이력 초기화", key="btn_reset_history", type="secondary",
+                         help="초기화하면 AI가 기존에 추천한 내용을 잊고 새로운 키워드를 추천합니다"):
                 if os.path.exists(이력파일): os.remove(이력파일)
-                st.success("초기화 완료!"); st.rerun()
+                st.success("✅ 초기화 완료! 다음 추천부터 완전히 새로운 키워드가 나옵니다.")
+                st.rerun()
+        with ch4:
+            # 오늘 이력만 삭제
+            오늘 = datetime.now().strftime('%Y-%m-%d')
+            if st.button("↩️ 오늘만 취소", key="btn_reset_today", type="secondary",
+                         help="오늘 추천된 키워드만 삭제합니다"):
+                data = 이력_로드()
+                if 오늘 in data:
+                    del data[오늘]
+                    import json as _json
+                    _json.dump(data, open(이력파일,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
+                    st.success("✅ 오늘 이력 삭제 완료!"); st.rerun()
 
         if 이력data:
-            with st.expander("📖 날짜별 추천 이력"):
+            with st.expander(f"📖 추천 이력 보기 ({총kw수}개 누적 — AI가 이걸 보고 중복 방지합니다)"):
                 for 날짜, kw_list in sorted(이력data.items(), reverse=True):
                     st.markdown(f"**{날짜}** — {', '.join(kw_list)}")
+        else:
+            st.info("💡 추천 이력이 없습니다. 처음 실행 시 AI가 가장 트렌디한 키워드를 추천합니다.")
 
         saved_files = sorted(glob.glob("상세페이지_저장/*.html"), reverse=True)
         if saved_files:
