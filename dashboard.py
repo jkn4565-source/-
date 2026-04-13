@@ -848,11 +848,15 @@ elif 메뉴 == "🇨🇳 글로벌 사입/직구 검색":
     with 탭1:
         c1, c2 = st.columns([3,1])
         gkw = c1.text_input("사냥할 상품명 (한글)", placeholder="예: 무소음 얼음틀", key="txt_g_input")
+        en_kw = gkw  # ✅ 기본값 — 번역 실패해도 한글 그대로 사용
+        cn_kw = gkw
         if c2.button("🌐 글로벌 탐색", type="primary", use_container_width=True):
             if gkw:
                 with st.spinner("AI 번역 중..."):
-                    en_kw = call_claude_api({"max_tokens":50,"messages":[{"role":"user","content":f"'{gkw}'를 알리익스프레스 검색용 영문으로 번역해줘. 설명 없이 영어만 출력해."}]})
-                    cn_kw = call_claude_api({"max_tokens":50,"messages":[{"role":"user","content":f"'{gkw}'를 1688 검색용 중국어 간체로 번역해줘. 설명 없이 중국어만 출력해."}]})
+                    res_en = call_claude_api({"max_tokens":50,"messages":[{"role":"user","content":f"'{gkw}'를 알리익스프레스 검색용 영문으로 번역해줘. 설명 없이 영어만 출력해."}]})
+                    res_cn = call_claude_api({"max_tokens":50,"messages":[{"role":"user","content":f"'{gkw}'를 1688 검색용 중국어 간체로 번역해줘. 설명 없이 중국어만 출력해."}]})
+                en_kw = res_en if res_en else gkw
+                cn_kw = res_cn if res_cn else gkw
                 st.success(f"번역완료! ✈️ {en_kw} / 🇨🇳 {cn_kw}")
                 ali = 검색_글로벌_알리(en_kw)
                 if ali:
