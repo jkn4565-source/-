@@ -156,15 +156,13 @@ def 도매꾹검색(검색어, 개수=20):
                 if (item.get('deli') or {}).get('who') == 'S': f = 0
                 if p <= 0: continue
                 결과.append({
-                    "제목":     item.get('title',''),
-                    "가격":     p,
-                    "배송비":   f,
-                    "총가격":   p + f,
-                    "최소수량": qty,
-                    "실매입가": p * qty + f,   # ✅ 최소수량 기준 실제 매입 총액
-                    "이미지":   item.get('thumb',''),
-                    "링크":     item.get('url',''),
-                    "출처":     "도매꾹"
+                    "제목":   item.get('title',''),
+                    "가격":   p,
+                    "배송비": f,
+                    "총가격": p + f,
+                    "이미지": item.get('thumb',''),
+                    "링크":   item.get('url',''),
+                    "출처":   "도매꾹"
                 })
             return 결과
         except: return []
@@ -260,16 +258,9 @@ def 출력_통합_결과_레이아웃(검색어):
                 if data:
                     best = data[0]
                     si   = f"<div style='position:absolute;top:10px;left:10px;background:#ff4500;color:white;padding:3px 8px;border-radius:5px;font-weight:bold;font-size:.8rem;'>판매량 {best['판매량']}+</div>" if '판매량' in best else ""
-                    # ✅ 도매꾹 전용 최소수량 배지
-                    qty_badge = ""
-                    if best.get('출처') == '도매꾹' and best.get('최소수량', 1) > 1:
-                        qty    = best['최소수량']
-                        실매입  = best.get('실매입가', best['총가격'] * qty)
-                        qty_badge = f"<div style='background:rgba(255,215,0,.15);border:1px solid rgba(255,215,0,.4);border-radius:8px;padding:6px 10px;margin-bottom:10px;font-size:.8rem;color:#ffd700;'>📦 최소 <b>{qty}개</b> 구매 · 실매입 <b>{실매입:,}원</b></div>"
                     st.markdown(f"""<div class="result-card">{si}
 <img src="{best['이미지']}" style="width:100%;border-radius:8px;margin-bottom:10px;">
 <h4 style="color:#ffd700;margin:0 0 6px 0;">단가 {best.get('총가격',best.get('가격')):,}원</h4>
-{qty_badge}
 <p style="color:#ccc;font-size:.8rem;margin:0 0 10px 0;height:40px;overflow:hidden;">{best['제목'][:40]}...</p>
 </div>""", unsafe_allow_html=True)
                     st.link_button("👑 왕의 소싱처로 이동", best['링크'], type="primary")
@@ -291,16 +282,10 @@ def 출력_통합_결과_레이아웃(검색어):
                 with col_img: st.image(item['이미지'], width=100)
                 with col_txt:
                     badge = "✈️ 직구" if item['출처']=="AliExpress" else "🇰🇷 국내"
-                    # ✅ 도매꾹 최소수량 정보
-                    qty_info = ""
-                    if item.get('출처') == '도매꾹' and item.get('최소수량', 1) > 1:
-                        qty      = item['최소수량']
-                        실매입    = item.get('실매입가', item['총가격'] * qty)
-                        qty_info = f"<br><span style='color:#ffd700;font-size:.85rem;'>📦 최소 {qty}개 · 실매입 {실매입:,}원 (배송비 포함)</span>"
                     st.markdown(f"""<div style="margin-bottom:15px;">
 <strong style="color:#ffd700;font-size:1.1rem;">{i}. [{badge}|{item['출처']}]</strong>
 <span style="color:#fff;">{item['제목']}</span><br>
-<span style="color:#03C75A;font-weight:bold;font-size:1.2rem;">단가 {item['총가격']:,}원</span>{qty_info}
+<span style="color:#03C75A;font-weight:bold;font-size:1.2rem;">단가 {item['총가격']:,}원</span>
 </div>""", unsafe_allow_html=True)
                 with col_btn: st.link_button("구매하러 가기", item['링크'])
 
@@ -1044,25 +1029,84 @@ border-left:3px solid {color};border-radius:8px;margin-bottom:20px;">
 # ==========================================
 elif 메뉴 == "💰 마진 계산기":
     st.markdown("<h1>💰 스마트 묶음 마진 계산기</h1>", unsafe_allow_html=True)
-    c1,c2,c3 = st.columns(3)
+
+    # ── 매입 정보 ─────────────────────────────────────────────────
+    st.markdown("##### 📥 매입 정보")
+    c1, c2, c3 = st.columns(3)
     buy_p  = c1.number_input("단품 도매가(매입가)", value=2900, step=100, key="buy_p")
-    qty    = c2.number_input("판매 수량 (묶음 단위)", min_value=1, value=10, step=1, key="qty")
-    ship_p = c3.number_input("건당 매입 배송비", value=2500, step=100, key="ship_p")
+    qty    = c2.number_input("판매 수량 (묶음 단위)", min_value=1, value=1, step=1, key="qty")
+    ship_buy = c3.number_input("건당 매입 배송비", value=2500, step=100, key="ship_p")
+
+    # ── 판매 정보 ─────────────────────────────────────────────────
+    st.markdown("##### 📤 판매 배송비")
+    d1, d2 = st.columns([2, 1])
+    with d1:
+        ship_sell = st.number_input(
+            "판매 시 건당 배송비 (내가 구매자에게 부담하는 배송비)",
+            min_value=0, value=0, step=100, key="ship_sell",
+            help="무료배송이면 0 / 유료배송이면 실제 택배비 입력 (예: 3000)"
+        )
+    with d2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        free_ship = st.checkbox("무료배송", value=True, key="free_ship")
+        if free_ship:
+            ship_sell = 0
+
     st.divider()
-    target_m = st.slider("🎯 목표 마진율 (%)", min_value=5, max_value=80, value=5, step=1)
+    target_m = st.slider("🎯 목표 마진율 (%)", min_value=5, max_value=80, value=20, step=1)
+
     if st.button("🚀 플랫폼별 추천 판매가 계산", type="primary", use_container_width=True):
-        total_cost = buy_p * qty + ship_p
-        st.markdown(f"""<div style="padding:15px;background:rgba(255,215,0,0.1);border-radius:8px;margin-bottom:20px;">
-<h4 style="color:#ffd700;margin:0;">📦 총 매입 원가: {total_cost:,}원</h4></div>""", unsafe_allow_html=True)
-        for (name, fee), col in zip([("스마트스토어",0.00),("쿠팡(11%)",0.11),("11번가(13%)",0.13)], st.columns(3)):
-            rec = total_cost / (1 - fee - 0.036 - target_m/100)
-            margin = rec * (target_m/100)
+        # 총 매입 원가 = 도매가 × 수량 + 매입배송비
+        total_cost = buy_p * qty + ship_buy
+        # 총 비용 = 매입원가 + 판매배송비
+        total_out  = total_cost + ship_sell
+
+        st.markdown(f"""
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px;">
+          <div style="background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.2);
+          border-radius:10px;padding:14px;text-align:center;">
+            <div style="color:#aaa;font-size:.8rem;">📥 총 매입 원가</div>
+            <div style="color:#ffd700;font-size:1.4rem;font-weight:800;">{total_cost:,}원</div>
+            <div style="color:#555;font-size:.75rem;">(도매가×{qty}개 + 매입배송비)</div>
+          </div>
+          <div style="background:rgba(255,100,100,.06);border:1px solid rgba(255,100,100,.2);
+          border-radius:10px;padding:14px;text-align:center;">
+            <div style="color:#aaa;font-size:.8rem;">📤 판매 배송비</div>
+            <div style="color:#ff6b6b;font-size:1.4rem;font-weight:800;">{"무료" if ship_sell==0 else f"{ship_sell:,}원"}</div>
+            <div style="color:#555;font-size:.75rem;">{"구매자 부담 없음" if ship_sell==0 else "판매자 부담"}</div>
+          </div>
+          <div style="background:rgba(3,199,90,.08);border:1px solid rgba(3,199,90,.2);
+          border-radius:10px;padding:14px;text-align:center;">
+            <div style="color:#aaa;font-size:.8rem;">💸 총 지출 합계</div>
+            <div style="color:#03C75A;font-size:1.4rem;font-weight:800;">{total_out:,}원</div>
+            <div style="color:#555;font-size:.75rem;">(매입원가 + 판매배송비)</div>
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("#### 🏪 플랫폼별 추천 판매가")
+        for (name, fee), col in zip(
+            [("스마트스토어", 0.00), ("쿠팡(11%)", 0.11), ("11번가(13%)", 0.13)],
+            st.columns(3)
+        ):
+            # 판매가 = (총지출) / (1 - 수수료 - 부가세3.6% - 목표마진율)
+            rec    = total_out / (1 - fee - 0.036 - target_m / 100)
+            margin = rec * (target_m / 100)
+            실마진  = rec - total_out - rec * (fee + 0.036)  # 실제 손에 남는 금액
+
             with col:
                 st.success(f"🛒 {name}")
                 st.metric("추천 판매가", f"{int(rec):,}원")
-                st.write(f"💵 마진액: **{int(margin):,}원**")
-                if qty > 1:
-                    st.caption(f"1개당: {int(rec/qty):,}원 / 마진 {int(margin/qty):,}원")
+                st.markdown(f"""
+                <div style="font-size:.88rem;margin-top:4px;">
+                  💵 마진액: <b>{int(margin):,}원</b><br>
+                  📊 실수령: <b style="color:#03C75A;">{int(실마진):,}원</b>
+                  {"<br><span style='color:#aaa;font-size:.8rem;'>1개당: "+str(int(rec/qty))+",원 / 마진 "+str(int(margin/qty))+",원</span>" if qty > 1 else ""}
+                </div>""".replace(",원", "원"), unsafe_allow_html=True)
+
+        # 손익분기점
+        st.divider()
+        bep = total_out / (1 - 0.036)  # 수수료 없는 스마트스토어 기준
+        st.info(f"📉 손익분기점 (스마트스토어 기준): **{int(bep):,}원** 이상 판매해야 손해 없음")
 
 # ==========================================
 # 📦 재고/가격 알림
@@ -1136,11 +1180,33 @@ elif 메뉴 == "📦 재고/가격 알림":
             json.dump(d, open(재고파일,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
 
     # Google Sheets 연결 상태 표시
-    _ws_test = _get_sheet()
+    _ws_test = None
+    _연동오류 = ""
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+        scopes = ["https://spreadsheets.google.com/feeds",
+                  "https://www.googleapis.com/auth/drive"]
+        if "gcp_service_account" not in st.secrets:
+            _연동오류 = "❌ Secrets에 [gcp_service_account] 섹션이 없습니다."
+        elif "SPREADSHEET_ID" not in st.secrets:
+            _연동오류 = "❌ Secrets에 SPREADSHEET_ID가 없습니다."
+        else:
+            creds = Credentials.from_service_account_info(
+                dict(st.secrets["gcp_service_account"]), scopes=scopes)
+            gc = gspread.authorize(creds)
+            _ws_test = gc.open_by_key(st.secrets["SPREADSHEET_ID"])
+    except ImportError:
+        _연동오류 = "❌ gspread 라이브러리 미설치 — requirements.txt에 gspread, google-auth 추가 후 재배포 필요"
+    except Exception as e:
+        _연동오류 = f"❌ 연동 오류: {str(e)}"
+
     if _ws_test is not None:
         st.success("☁️ Google Sheets 연동 중 — 앱이 꺼져도 데이터가 유지됩니다.")
     else:
         st.warning("⚠️ Google Sheets 미연동 — 로컬 저장 모드 (앱 재시작 시 초기화될 수 있습니다)\n\nStreamlit Secrets에 `gcp_service_account`와 `SPREADSHEET_ID`를 등록하세요.")
+        if _연동오류:
+            st.error(_연동오류)
 
     # ── 스케줄러 상태 카드 ────────────────────────────────────────
     now_h = datetime.now().hour
