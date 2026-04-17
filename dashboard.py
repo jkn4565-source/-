@@ -96,7 +96,7 @@ if 'pkg_outputs'           not in st.session_state: st.session_state['pkg_output
 # 🛠️ 4. 핵심 함수 모음
 # ==========================================
 
-def call_claude_api(body, _retry=2):
+def call_claude_api(body):
     try:
         headers = {
             "x-api-key": CLAUDE_API_KEY,
@@ -111,9 +111,6 @@ def call_claude_api(body, _retry=2):
             text = re.sub(r'```[^\n]*\n?', '', text)
             text = text.replace('~~', '~')
             return text.strip()
-        elif resp.status_code in (529, 503, 500) and _retry > 0:
-            time.sleep(5)
-            return call_claude_api(body, _retry=_retry-1)
         else:
             try:
                 err = resp.json().get('error', {}).get('message', resp.text[:200])
