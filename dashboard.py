@@ -96,7 +96,7 @@ if 'pkg_outputs'           not in st.session_state: st.session_state['pkg_output
 # 🛠️ 4. 핵심 함수 모음
 # ==========================================
 
-def call_claude_api(body):
+def call_claude_api(body, _retry=2):
     try:
         headers = {
             "x-api-key": CLAUDE_API_KEY,
@@ -109,10 +109,23 @@ def call_claude_api(body):
         if resp.status_code == 200:
             text = resp.json()["content"][0]["text"].strip()
             text = re.sub(r'```[^\n]*\n?', '', text)
-            text = text.replace('~~', '~')     # ✅ 취소선 → 물결 하나로 교체
+            text = text.replace('~~', '~')
             return text.strip()
+        elif resp.status_code in (529, 503, 500) and _retry > 0:
+            time.sleep(5)
+            return call_claude_api(body, _retry=_retry-1)
+        else:
+            try:
+                err = resp.json().get('error', {}).get('message', resp.text[:200])
+            except:
+                err = resp.text[:200]
+            st.session_state['_api_last_error'] = f"HTTP {resp.status_code}: {err[:120]}"
+            return None
+    except requests.exceptions.Timeout:
+        st.session_state['_api_last_error'] = "응답 시간 초과 (180초)"
         return None
-    except:
+    except Exception as e:
+        st.session_state['_api_last_error'] = str(e)[:120]
         return None
 
 def 네이버검색(상품명, 개수=50):
@@ -805,10 +818,15 @@ elif 메뉴 == "📸 이미지로 검색":
                                 {"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":b64}},
                                 {"type":"text","text":"당신은 한국의 10년차 탑티어 상품 소싱 MD입니다.\n1. 브랜드/모델명을 알면 앞쪽에 적으세요.\n2. 모르면 네이버/도매꾹 검색용 구체적 명사로 적으세요.\n3. 총 9개 명사형 키워드만 콤마(,)로 구분해서 출력하세요. (설명 없음)"}
                             ]}]})
-                        if res:
+                        if res and not res.startswith('__'):
                             st.session_state['keywords_list'] = [k.strip() for k in res.split(',')]
                             st.rerun()
-                        else: st.error("⚠️ AI 서버 혼잡. 초기화 버튼을 누르고 다시 시도해주세요.")
+                        elif res:
+                            err_detail = st.session_state.get('_api_last_error', '')
+                            st.error(f"⚠️ AI 오류: {err_detail}" if err_detail else "⚠️ AI 서버 오류 — 잠시 후 다시 시도해주세요.")
+                        else:
+                            err_detail = st.session_state.get('_api_last_error', '')
+                            st.error(f"⚠️ {err_detail}" if err_detail else "⚠️ AI 응답 없음 — 잠시 후 다시 시도해주세요.")
     if st.session_state.get('keywords_list'):
         st.divider()
         st.markdown("### 2단계: 사냥할 키워드 선택")
@@ -1461,7 +1479,10 @@ elif 메뉴 == "💎 블루오션 탐지 + 🤖 자동추천":
             st.markdown("### 🧠 STEP 1 — AI 트렌드 + 시즌 분석")
             with st.spinner("Claude AI가 블루오션 키워드 분석 중..."):
                 키워드목록 = ai_트렌드_키워드_생성(카테고리, 타겟가격대, 추천수)
-            if not 키워드목록: st.error("키워드 생성 실패."); st.stop()
+            if not 키워드목록:
+                err = st.session_state.get('_api_last_error', '')
+                st.error(f"❌ 키워드 생성 실패: {err}" if err else "❌ 키워드 생성 실패 — Claude API 상태를 확인해주세요.")
+                st.stop()
             st.success(f"✅ {len(키워드목록)}개 키워드 생성 완료!")
             이력_저장(datetime.now().strftime('%Y-%m-%d'), [it['keyword'] for it in 키워드목록])
 
