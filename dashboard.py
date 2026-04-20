@@ -92,6 +92,14 @@ if 'keywords_list'         not in st.session_state: st.session_state['keywords_l
 if 'run_search'            not in st.session_state: st.session_state['run_search'] = False
 if 'pkg_outputs'           not in st.session_state: st.session_state['pkg_outputs'] = {}
 
+# ✅ 앱 접속 시 자동 가격 체크 (변동 있을 때만 텔레그램 알림)
+if '_startup_checked' not in st.session_state:
+    st.session_state['_startup_checked'] = True
+    try:
+        자동_가격체크(source="자동")
+    except:
+        pass
+
 # ==========================================
 # 🛠️ 4. 핵심 함수 모음
 # ==========================================
@@ -382,14 +390,15 @@ def 가격체크_URL(url, 플랫폼):
 점검기록파일 = "자동점검기록.json"
 
 def 자동_가격체크(source="자동"):
-    # 중복 실행 방지
+    # 중복 실행 방지 — 4시간 단위로 한 번만 실행
     now     = datetime.now()
-    now_key = now.strftime('%Y%m%d%H')
+    # 4시간 단위 키: 날짜 + 0~5 (4시간 블록)
+    now_key = now.strftime('%Y%m%d') + str(now.hour // 4)
     if os.path.exists(점검기록파일):
         try:
             last = json.load(open(점검기록파일,'r',encoding='utf-8'))
             if source == "자동" and last.get('last_key') == now_key:
-                return
+                return  # 이미 이 4시간 블록에 체크함
         except: pass
 
     # ── Google Sheets에서 목록 로드 ──────────────────────────────
@@ -464,11 +473,13 @@ def 자동_가격체크(source="자동"):
         _스케줄러_저장(목록, ws)
 
         now_str    = now.strftime('%Y-%m-%d %H:%M')
-        type_label = "⏰ 정기" if source == "자동" else "🔄 수동"
+        type_label = "⏰ 자동" if source == "자동" else "🔄 수동"
         if 변경_내용:
-            send_telegram(f"{type_label} <b>점검 완료</b> ({now_str})\n총 {len(목록)}개 점검\n\n<b>변동 내역:</b>\n" + "\n".join(변경_내용))
-        else:
-            send_telegram(f"{type_label} <b>점검 완료</b> ({now_str})\n총 {len(목록)}개 — 변동 없음 ✅")
+            # ✅ 변동 있을 때만 텔레그램 발송
+            send_telegram(f"{type_label} <b>가격·재고 변동 감지!</b> ({now_str})\n총 {len(목록)}개 점검\n\n<b>변동 내역:</b>\n" + "\n".join(변경_내용))
+        # 변동 없으면 텔레그램 발송 안 함 (수동 점검은 예외)
+        elif source == "수동":
+            send_telegram(f"🔄 <b>수동 점검 완료</b> ({now_str})\n총 {len(목록)}개 — 변동 없음 ✅")
 
         json.dump({'last_key': now_key, 'last_time': now_str,
                    'count': len(목록), 'changes': len(변경_내용), 'source': source},
@@ -476,7 +487,7 @@ def 자동_가격체크(source="자동"):
     except Exception as e:
         send_telegram(f"⚠️ <b>점검 오류</b>\n{str(e)[:200]}")
 
-# ── 백그라운드 스케줄러 (오전 11시 · 오후 2시 자동 실행) ────────
+# ── 백그라운드 스케줄러 (4시간마다 자동 실행) ────────────────────
 import threading
 _SCHEDULER_RUNNING = False
 
@@ -487,16 +498,16 @@ def _start_background_scheduler():
     _SCHEDULER_RUNNING = True
 
     def _run():
-        last_ran_hour = -1
+        last_ran_key = ""   # "날짜_시간대" 기준 중복 실행 방지
         while True:
             try:
                 now = datetime.now()
-                if now.hour in (11, 14) and now.minute < 3:
-                    if last_ran_hour != now.hour:
-                        last_ran_hour = now.hour
+                # 4시간 단위: 0시, 4시, 8시, 12시, 16시, 20시 실행
+                if now.hour % 4 == 0 and now.minute < 3:
+                    run_key = now.strftime('%Y%m%d_%H')
+                    if last_ran_key != run_key:
+                        last_ran_key = run_key
                         자동_가격체크(source="자동")
-                elif now.hour not in (11, 14):
-                    last_ran_hour = -1   # 매 시간마다 리셋
             except Exception:
                 pass
             time.sleep(60)  # 1분마다 시간 확인
@@ -1230,7 +1241,14 @@ elif 메뉴 == "📦 재고/가격 알림":
     # ── 스케줄러 상태 카드 ────────────────────────────────────────
     now_h = datetime.now().hour
     now_m = datetime.now().minute
-    next_run = "오전 11:00" if now_h < 11 else "오후 2:00" if now_h < 14 else "내일 오전 11:00"
+    # 다음 4시간 단위 시각 계산
+    next_h = ((now_h // 4) + 1) * 4
+    if next_h >= 24: next_h = 0
+    next_run = f"{next_h:02d}:00"
+    if next_h < 12:
+        next_run_label = f"오전 {next_h}:00" if next_h > 0 else "오전 0:00 (자정)"
+    else:
+        next_run_label = f"오후 {next_h-12}:00" if next_h > 12 else "오후 12:00 (정오)"
 
     last_info = {}
     if os.path.exists(점검기록파일):
@@ -1248,12 +1266,12 @@ elif 메뉴 == "📦 재고/가격 알림":
       <div style="background:rgba(3,199,90,.08);border:1px solid rgba(3,199,90,.25);
       border-radius:12px;padding:16px;text-align:center;">
         <div style="color:#03C75A;font-size:1.4rem;font-weight:800;">⏰ 자동 ON</div>
-        <div style="color:#aaa;font-size:.82rem;margin-top:4px;">오전 11:00 · 오후 2:00</div>
+        <div style="color:#aaa;font-size:.82rem;margin-top:4px;">4시간마다 자동 점검</div>
       </div>
       <div style="background:rgba(255,215,0,.07);border:1px solid rgba(255,215,0,.2);
       border-radius:12px;padding:16px;text-align:center;">
         <div style="color:#ffd700;font-size:1.1rem;font-weight:700;">다음 점검</div>
-        <div style="color:#ffd700;font-size:1.3rem;font-weight:800;">{next_run}</div>
+        <div style="color:#ffd700;font-size:1.3rem;font-weight:800;">{next_run_label}</div>
       </div>
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
       border-radius:12px;padding:16px;text-align:center;">
@@ -1282,37 +1300,61 @@ elif 메뉴 == "📦 재고/가격 알림":
                                          placeholder="상품 페이지 주소를 붙여넣으세요")
         관리명 = cb.text_input("관리 이름", placeholder="예: 실리콘 얼음틀", key="add_name")
 
+        # ✅ 옵션 입력 (같은 URL을 옵션별로 구분 등록)
+        st.markdown("""<div style="background:rgba(255,215,0,.06);border:1px solid rgba(255,215,0,.15);
+        border-radius:8px;padding:8px 14px;margin:6px 0;font-size:.85rem;color:#aaa;">
+        💡 <b style="color:#ffd700;">옵션이 여러 개라면</b> — 같은 URL로 옵션마다 따로 등록 가능합니다.<br>
+        예: 관리이름 <b>실리콘 얼음틀</b> / 옵션 <b>빨강</b> → <b>실리콘 얼음틀</b> / 옵션 <b>파랑</b>
+        </div>""", unsafe_allow_html=True)
+
+        opt1, opt2 = st.columns([2, 1])
+        옵션명 = opt1.text_input(
+            "옵션 이름 (선택 — 없으면 비워두세요)",
+            placeholder="예: 빨강 / L사이즈 / 3개입",
+            key="add_option"
+        )
+        등록가격 = opt2.number_input(
+            "현재 가격 (직접 입력)",
+            min_value=0, value=0, step=100, key="add_price_manual",
+            help="0이면 자동으로 가져옵니다"
+        )
+
         if st.button("👑 모니터링 명단에 등록", use_container_width=True, key="btn_add_item"):
             목록 = 로드()
             if not 관리명.strip():
                 st.warning("관리 이름을 입력해주세요!")
             else:
-                with st.spinner("현재 가격 확인 중..."):
-                    if 선택플랫폼 == "도매꾹":
-                        price_now, status_now = 가격체크_도매꾹(item_no_val)
-                        url_stored = f"https://domeggook.com/{item_no_val}"
-                        id_stored  = item_no_val
-                    else:
-                        price_now, status_now = 가격체크_URL(item_url_val.strip(), 선택플랫폼)
-                        url_stored = item_url_val.strip()
-                        id_stored  = ""
+                # 최종 관리명 = 관리명 + 옵션명 조합
+                최종관리명 = f"{관리명.strip()} [{옵션명.strip()}]" if 옵션명.strip() else 관리명.strip()
+
+                if 선택플랫폼 == "도매꾹":
+                    url_stored = f"https://domeggook.com/{item_no_val}"
+                    id_stored  = item_no_val
+                else:
+                    url_stored = item_url_val.strip()
+                    id_stored  = ""
+
+                # 가격 자동 조회 or 직접 입력
+                if 등록가격 > 0:
+                    price_now, status_now = 등록가격, "판매중"
+                else:
+                    with st.spinner("현재 가격 확인 중..."):
+                        if 선택플랫폼 == "도매꾹":
+                            price_now, status_now = 가격체크_도매꾹(item_no_val)
+                        else:
+                            price_now, status_now = 가격체크_URL(url_stored, 선택플랫폼)
 
                 if price_now:
-                    목록.append({"no": id_stored, "name": 관리명.strip(),
+                    목록.append({"no": id_stored, "name": 최종관리명,
                                 "platform": 선택플랫폼, "url": url_stored,
+                                "option": 옵션명.strip(),
                                 "price": price_now, "상태": status_now})
                     저장(목록)
-                    st.success(f"✅ {PLATFORM_ICONS[선택플랫폼]} {선택플랫폼} 등록 완료! 현재가: **{price_now:,}원**")
+                    st.success(f"✅ {PLATFORM_ICONS[선택플랫폼]} 등록 완료! **{최종관리명}** — {price_now:,}원")
                     st.rerun()
                 else:
-                    st.error(f"❌ 가격 확인 실패 ({status_now}) — URL 또는 상품번호를 확인해주세요.")
-                    manual_price = st.number_input("현재 가격 직접 입력 (원)", min_value=0, step=100, key="manual_p")
-                    if st.button("직접 입력으로 등록", key="btn_manual") and manual_price > 0:
-                        목록.append({"no": id_stored if 선택플랫폼=="도매꾹" else "",
-                                    "name": 관리명.strip(), "platform": 선택플랫폼,
-                                    "url": url_stored if 선택플랫폼!="도매꾹" else f"https://domeggook.com/{item_no_val}",
-                                    "price": manual_price, "상태": "판매중"})
-                        저장(목록); st.success("✅ 수동 등록 완료!"); st.rerun()
+                    st.error(f"❌ 가격 확인 실패 ({status_now})")
+                    st.info("💡 현재 가격을 직접 입력하고 다시 시도해주세요.")
 
     st.divider()
 
