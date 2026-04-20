@@ -446,28 +446,31 @@ def 자동_가격체크(source="자동"):
 
         변경_내용 = []
         for i, s in enumerate(목록):
-            플랫폼 = s.get('platform','도매꾹')
+            플랫폼  = s.get('platform','도매꾹')
+            name값  = s.get('name', s.get('관리명','이름없음'))
+            price값 = int(s.get('price', 0) or 0)
+            url값   = s.get('url','')
             if 플랫폼 == "도매꾹":
                 now_p, now_st = 가격체크_도매꾹(s.get('no',''))
             else:
-                now_p, now_st = 가격체크_URL(s['url'], 플랫폼)
+                now_p, now_st = 가격체크_URL(url값, 플랫폼)
             icon = PLATFORM_ICONS.get(플랫폼,"⚪")
-            if now_p and now_p > s['price']:
-                diff = now_p - s['price']
-                send_telegram(f"🔺 <b>가격인상!</b> {icon}{플랫폼}\n📦 {s['name']}\n{s['price']:,}원 → <b>{now_p:,}원</b> (+{diff:,}원)")
+            if now_p and now_p > price값:
+                diff = now_p - price값
+                send_telegram(f"🔺 <b>가격인상!</b> {icon}{플랫폼}\n📦 {name값}\n{price값:,}원 → <b>{now_p:,}원</b> (+{diff:,}원)")
                 목록[i].update({'price': now_p, '상태': "판매중"})
-                변경_내용.append(f"🔺 {s['name']}: +{diff:,}원")
-            elif now_p and now_p < s['price']:
-                diff = s['price'] - now_p
-                send_telegram(f"🔻 <b>가격인하!</b> {icon}{플랫폼}\n📦 {s['name']}\n{s['price']:,}원 → <b>{now_p:,}원</b> (-{diff:,}원)")
+                변경_내용.append(f"🔺 {name값}: +{diff:,}원")
+            elif now_p and now_p < price값:
+                diff = price값 - now_p
+                send_telegram(f"🔻 <b>가격인하!</b> {icon}{플랫폼}\n📦 {name값}\n{price값:,}원 → <b>{now_p:,}원</b> (-{diff:,}원)")
                 목록[i].update({'price': now_p, '상태': "판매중"})
-                변경_내용.append(f"🔻 {s['name']}: -{diff:,}원")
+                변경_내용.append(f"🔻 {name값}: -{diff:,}원")
             elif now_p:
                 목록[i]['상태'] = "판매중"
             else:
                 if s.get('상태','판매중') == "판매중":
-                    send_telegram(f"🚫 <b>품절/확인불가!</b> {icon}{플랫폼}\n📦 {s['name']}\n상태: {now_st}")
-                    변경_내용.append(f"🚫 {s['name']}: {now_st}")
+                    send_telegram(f"🚫 <b>품절/확인불가!</b> {icon}{플랫폼}\n📦 {name값}\n상태: {now_st}")
+                    변경_내용.append(f"🚫 {name값}: {now_st}")
                 목록[i]['상태'] = now_st
 
         _스케줄러_저장(목록, ws)
@@ -1386,16 +1389,18 @@ elif 메뉴 == "📦 재고/가격 알림":
             플랫폼 = s.get('platform','도매꾹')
             icon   = PLATFORM_ICONS.get(플랫폼,"⚪")
             상태값 = s.get('상태','판매중')
+            name값  = s.get('name', s.get('관리명', '이름없음'))
+            price값 = int(s.get('price', 0) or 0)
             if 상태값 == "판매중":   sc = "color:#03C75A;font-weight:bold;"
             elif 상태값 == "품절":   sc = "color:#ff4b4b;font-weight:bold;"
             else:                    sc = "color:#ffd700;font-weight:bold;"
             c1,c2,c3,c4,c5 = st.columns([3,1,1,1,1])
             c1.markdown(
-                f"{icon} **{s['name']}** "
+                f"{icon} **{name값}** "
                 f"<span style='color:#555;font-size:.78rem;background:rgba(255,255,255,.05);"
                 f"padding:2px 7px;border-radius:10px;'>{플랫폼}</span>",
                 unsafe_allow_html=True)
-            c2.markdown(f"<strong style='color:#ffd700;'>{s['price']:,}원</strong>", unsafe_allow_html=True)
+            c2.markdown(f"<strong style='color:#ffd700;'>{price값:,}원</strong>", unsafe_allow_html=True)
             c3.markdown(f"<span style='{sc}'>{상태값}</span>", unsafe_allow_html=True)
             c4.link_button("🔗", s.get('url','#'), use_container_width=True)
             if c5.button("삭제", key=f"d_{idx}", type="secondary"):
