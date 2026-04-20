@@ -465,7 +465,7 @@ def 자동_가격체크(source="자동"):
             elif now_p:
                 목록[i]['상태'] = "판매중"
             else:
-                if s['상태'] == "판매중":
+                if s.get('상태','판매중') == "판매중":
                     send_telegram(f"🚫 <b>품절/확인불가!</b> {icon}{플랫폼}\n📦 {s['name']}\n상태: {now_st}")
                     변경_내용.append(f"🚫 {s['name']}: {now_st}")
                 목록[i]['상태'] = now_st
@@ -1385,9 +1385,10 @@ elif 메뉴 == "📦 재고/가격 알림":
         for idx, s in enumerate(목록):
             플랫폼 = s.get('platform','도매꾹')
             icon   = PLATFORM_ICONS.get(플랫폼,"⚪")
-            if s['상태'] == "판매중":   sc = "color:#03C75A;font-weight:bold;"
-            elif s['상태'] == "품절":   sc = "color:#ff4b4b;font-weight:bold;"
-            else:                        sc = "color:#ffd700;font-weight:bold;"
+            상태값 = s.get('상태','판매중')
+            if 상태값 == "판매중":   sc = "color:#03C75A;font-weight:bold;"
+            elif 상태값 == "품절":   sc = "color:#ff4b4b;font-weight:bold;"
+            else:                    sc = "color:#ffd700;font-weight:bold;"
             c1,c2,c3,c4,c5 = st.columns([3,1,1,1,1])
             c1.markdown(
                 f"{icon} **{s['name']}** "
@@ -1395,7 +1396,7 @@ elif 메뉴 == "📦 재고/가격 알림":
                 f"padding:2px 7px;border-radius:10px;'>{플랫폼}</span>",
                 unsafe_allow_html=True)
             c2.markdown(f"<strong style='color:#ffd700;'>{s['price']:,}원</strong>", unsafe_allow_html=True)
-            c3.markdown(f"<span style='{sc}'>{s['상태']}</span>", unsafe_allow_html=True)
+            c3.markdown(f"<span style='{sc}'>{상태값}</span>", unsafe_allow_html=True)
             c4.link_button("🔗", s.get('url','#'), use_container_width=True)
             if c5.button("삭제", key=f"d_{idx}", type="secondary"):
                 목록.pop(idx); 저장(목록); st.rerun()
