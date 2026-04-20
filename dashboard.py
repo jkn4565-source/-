@@ -1300,33 +1300,11 @@ elif 메뉴 == "📦 재고/가격 알림":
                                          placeholder="상품 페이지 주소를 붙여넣으세요")
         관리명 = cb.text_input("관리 이름", placeholder="예: 실리콘 얼음틀", key="add_name")
 
-        # ✅ 옵션 입력 (같은 URL을 옵션별로 구분 등록)
-        st.markdown("""<div style="background:rgba(255,215,0,.06);border:1px solid rgba(255,215,0,.15);
-        border-radius:8px;padding:8px 14px;margin:6px 0;font-size:.85rem;color:#aaa;">
-        💡 <b style="color:#ffd700;">옵션이 여러 개라면</b> — 같은 URL로 옵션마다 따로 등록 가능합니다.<br>
-        예: 관리이름 <b>실리콘 얼음틀</b> / 옵션 <b>빨강</b> → <b>실리콘 얼음틀</b> / 옵션 <b>파랑</b>
-        </div>""", unsafe_allow_html=True)
-
-        opt1, opt2 = st.columns([2, 1])
-        옵션명 = opt1.text_input(
-            "옵션 이름 (선택 — 없으면 비워두세요)",
-            placeholder="예: 빨강 / L사이즈 / 3개입",
-            key="add_option"
-        )
-        등록가격 = opt2.number_input(
-            "현재 가격 (직접 입력)",
-            min_value=0, value=0, step=100, key="add_price_manual",
-            help="0이면 자동으로 가져옵니다"
-        )
-
         if st.button("👑 모니터링 명단에 등록", use_container_width=True, key="btn_add_item"):
             목록 = 로드()
             if not 관리명.strip():
                 st.warning("관리 이름을 입력해주세요!")
             else:
-                # 최종 관리명 = 관리명 + 옵션명 조합
-                최종관리명 = f"{관리명.strip()} [{옵션명.strip()}]" if 옵션명.strip() else 관리명.strip()
-
                 if 선택플랫폼 == "도매꾹":
                     url_stored = f"https://domeggook.com/{item_no_val}"
                     id_stored  = item_no_val
@@ -1334,27 +1312,27 @@ elif 메뉴 == "📦 재고/가격 알림":
                     url_stored = item_url_val.strip()
                     id_stored  = ""
 
-                # 가격 자동 조회 or 직접 입력
-                if 등록가격 > 0:
-                    price_now, status_now = 등록가격, "판매중"
-                else:
-                    with st.spinner("현재 가격 확인 중..."):
-                        if 선택플랫폼 == "도매꾹":
-                            price_now, status_now = 가격체크_도매꾹(item_no_val)
-                        else:
-                            price_now, status_now = 가격체크_URL(url_stored, 선택플랫폼)
+                with st.spinner("현재 가격 확인 중..."):
+                    if 선택플랫폼 == "도매꾹":
+                        price_now, status_now = 가격체크_도매꾹(item_no_val)
+                    else:
+                        price_now, status_now = 가격체크_URL(url_stored, 선택플랫폼)
 
                 if price_now:
-                    목록.append({"no": id_stored, "name": 최종관리명,
+                    목록.append({"no": id_stored, "name": 관리명.strip(),
                                 "platform": 선택플랫폼, "url": url_stored,
-                                "option": 옵션명.strip(),
                                 "price": price_now, "상태": status_now})
                     저장(목록)
-                    st.success(f"✅ {PLATFORM_ICONS[선택플랫폼]} 등록 완료! **{최종관리명}** — {price_now:,}원")
+                    st.success(f"✅ {PLATFORM_ICONS[선택플랫폼]} 등록 완료! **{관리명.strip()}** — {price_now:,}원")
                     st.rerun()
                 else:
-                    st.error(f"❌ 가격 확인 실패 ({status_now})")
-                    st.info("💡 현재 가격을 직접 입력하고 다시 시도해주세요.")
+                    st.error(f"❌ 가격 확인 실패 ({status_now}) — URL 또는 상품번호를 확인해주세요.")
+                    manual_price = st.number_input("현재 가격 직접 입력 (원)", min_value=0, step=100, key="manual_p")
+                    if st.button("직접 입력으로 등록", key="btn_manual") and manual_price > 0:
+                        목록.append({"no": id_stored, "name": 관리명.strip(),
+                                    "platform": 선택플랫폼, "url": url_stored,
+                                    "price": manual_price, "상태": "판매중"})
+                        저장(목록); st.success("✅ 수동 등록 완료!"); st.rerun()
 
     st.divider()
 
