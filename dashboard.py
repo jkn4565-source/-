@@ -621,10 +621,14 @@ def ai_상세페이지_생성_및_저장(keyword, sourcing, reason, ocean_grade,
     html_str  = generate_html_detail_page(keyword, sourcing, reason, ocean_grade, ai_text)
     safe_name = re.sub(r'[^\w가-힣]','_', keyword)
     filename  = f"상세페이지_{datetime.now().strftime('%Y%m%d')}_{idx+1:02d}_{safe_name}.html"
-    save_dir  = "상세페이지_저장"
-    os.makedirs(save_dir, exist_ok=True)
-    filepath  = os.path.join(save_dir, filename)
-    with open(filepath,'w',encoding='utf-8') as f: f.write(html_str)
+    filepath  = None
+    try:
+        save_dir = "상세페이지_저장"
+        os.makedirs(save_dir, exist_ok=True)
+        filepath = os.path.join(save_dir, filename)
+        with open(filepath,'w',encoding='utf-8') as f: f.write(html_str)
+    except:
+        pass  # Streamlit Cloud 파일 쓰기 제한 시 무시 — 다운로드는 정상 작동
     return ai_text, html_str, filepath
 
 # ── 시즌 캘린더 포함 트렌드 키워드 생성 ─────────────────────────
@@ -2308,13 +2312,6 @@ footer strong{{color:#ffd700}}
             except Exception as e:
                 st.warning(f"썸네일 생성 실패: {e}")
 
-        # ── 서버 저장 ─────────────────────────────────────────────
-        save_dir = "등록패키지_저장"
-        os.makedirs(save_dir, exist_ok=True)
-        pkg_path = os.path.join(save_dir, f"등록패키지_{safe_kw}_{datetime.now().strftime('%Y%m%d%H%M')}.html")
-        with open(pkg_path, 'w', encoding='utf-8') as f:
-            f.write(html_pkg)
-
         # ✅ 모든 결과를 session_state에 저장 → 다운로드 후에도 유지
         st.session_state['pkg_outputs'] = {
             'result':       result,
@@ -2322,10 +2319,9 @@ footer strong{{color:#ffd700}}
             'thumb_bytes':  thumb_bytes,
             'safe_kw':      safe_kw,
             'effective_kw': effective_kw,
-            'pkg_path':     pkg_path,
             'today_str':    today_str,
         }
-        st.rerun()   # ← 재실행해서 아래 결과 표시 블록으로 이동
+        st.rerun()
 
     # ── 결과 표시 (session_state 기반 — 다운로드 후에도 유지) ────
     out = st.session_state.get('pkg_outputs', {})
@@ -2474,7 +2470,7 @@ footer strong{{color:#ffd700}}
                     key="dl_pkg_thumb"
                 )
 
-        st.success(f"✅ 서버 저장 완료: `{out['pkg_path']}`")
+        st.success("✅ 생성 완료! 아래에서 다운로드하세요.")
         st.markdown("""
         <div style="background:rgba(3,199,90,.08);border:1px solid rgba(3,199,90,.2);
         border-radius:10px;padding:14px 18px;margin-top:16px;">
