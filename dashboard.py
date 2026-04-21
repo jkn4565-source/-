@@ -1188,19 +1188,37 @@ elif 메뉴 == "📦 재고/가격 알림":
             return None
 
     def 로드():
+        # ✅ session_state 캐시 — 같은 세션에서 반복 호출 시 시트 재조회 안 함
+        if '_재고캐시' in st.session_state and '_재고캐시_시간' in st.session_state:
+            캐시경과 = (datetime.now() - st.session_state['_재고캐시_시간']).seconds
+            if 캐시경과 < 300:  # 5분 이내면 캐시 사용
+                return st.session_state['_재고캐시']
+
         ws = _get_sheet()
         if ws is None:
-            # Google Sheets 미설정 → 로컬 파일 fallback
             재고파일 = "재고모니터링.json"
             return json.load(open(재고파일,'r',encoding='utf-8')) if os.path.exists(재고파일) else []
         try:
             records = ws.get_all_records()
-            # price를 int로 변환
             for r in records:
                 r['price'] = int(r.get('price', 0) or 0)
+            # ✅ 캐시 저장
+            st.session_state['_재고캐시'] = records
+            st.session_state['_재고캐시_시간'] = datetime.now()
             return records
-        except:
+        except Exception as e:
+            # Quota 초과 시 캐시 반환
+            if '_재고캐시' in st.session_state:
+                st.warning("⚠️ Google Sheets 요청 한도 초과 — 캐시 데이터를 표시합니다.")
+                return st.session_state['_재고캐시']
             return []
+
+    def 캐시_초기화():
+        """저장 후 캐시 무효화"""
+        if '_재고캐시' in st.session_state:
+            del st.session_state['_재고캐시']
+        if '_재고캐시_시간' in st.session_state:
+            del st.session_state['_재고캐시_시간']
 
     def 저장(d):
         # ✅ 빈 데이터는 저장 안 함
@@ -1232,12 +1250,11 @@ elif 메뉴 == "📦 재고/가격 알림":
                 ])
             ws.clear()
             ws.update('A1', rows)
+            캐시_초기화()  # ✅ 저장 후 캐시 무효화 → 다음 로드 시 시트 재조회
         except Exception as e:
             st.warning(f"Google Sheets 저장 오류: {e}")
             재고파일 = "재고모니터링.json"
             json.dump(d, open(재고파일,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
-
-    # Google Sheets 연결 상태 표시
     _ws_test = None
     _연동오류 = ""
     try:
