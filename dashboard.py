@@ -1255,33 +1255,37 @@ elif 메뉴 == "📦 재고/가격 알림":
             st.warning(f"Google Sheets 저장 오류: {e}")
             재고파일 = "재고모니터링.json"
             json.dump(d, open(재고파일,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
-    _ws_test = None
-    _연동오류 = ""
-    try:
-        import gspread
-        from google.oauth2.service_account import Credentials
-        scopes = ["https://spreadsheets.google.com/feeds",
-                  "https://www.googleapis.com/auth/drive"]
-        if "gcp_service_account" not in st.secrets:
-            _연동오류 = "❌ Secrets에 [gcp_service_account] 섹션이 없습니다."
-        elif "SPREADSHEET_ID" not in st.secrets:
-            _연동오류 = "❌ Secrets에 SPREADSHEET_ID가 없습니다."
-        else:
-            creds = Credentials.from_service_account_info(
-                dict(st.secrets["gcp_service_account"]), scopes=scopes)
-            gc = gspread.authorize(creds)
-            _ws_test = gc.open_by_key(st.secrets["SPREADSHEET_ID"])
-    except ImportError:
-        _연동오류 = "❌ gspread 라이브러리 미설치 — requirements.txt에 gspread, google-auth 추가 후 재배포 필요"
-    except Exception as e:
-        _연동오류 = f"❌ 연동 오류: {str(e)}"
+    # ✅ 연결 상태 확인 — API 호출 없이 Secrets만 확인 (Quota 절약)
+    if '_sheets_연동확인' not in st.session_state:
+        try:
+            import gspread
+            from google.oauth2.service_account import Credentials
+            if "gcp_service_account" not in st.secrets:
+                st.session_state['_sheets_연동확인'] = "미설정"
+            elif "SPREADSHEET_ID" not in st.secrets:
+                st.session_state['_sheets_연동확인'] = "미설정"
+            else:
+                # Credentials만 확인 (실제 시트 읽기 X)
+                Credentials.from_service_account_info(
+                    dict(st.secrets["gcp_service_account"]),
+                    scopes=["https://spreadsheets.google.com/feeds"])
+                st.session_state['_sheets_연동확인'] = "연동"
+        except ImportError:
+            st.session_state['_sheets_연동확인'] = "미설치"
+        except Exception as e:
+            st.session_state['_sheets_연동확인'] = f"오류:{str(e)[:80]}"
 
-    if _ws_test is not None:
+    _연동상태 = st.session_state.get('_sheets_연동확인','확인중')
+    if _연동상태 == "연동":
         st.success("☁️ Google Sheets 연동 중 — 앱이 꺼져도 데이터가 유지됩니다.")
+    elif _연동상태 == "미설치":
+        st.error("❌ gspread 미설치 — requirements.txt 확인")
+    elif _연동상태 == "미설정":
+        st.warning("⚠️ Google Sheets 미연동 — Secrets에 `gcp_service_account`와 `SPREADSHEET_ID`를 등록하세요.")
+    elif _연동상태.startswith("오류:"):
+        st.warning(f"⚠️ Google Sheets 연동 오류: {_연동상태[3:]}")
     else:
-        st.warning("⚠️ Google Sheets 미연동 — 로컬 저장 모드 (앱 재시작 시 초기화될 수 있습니다)\n\nStreamlit Secrets에 `gcp_service_account`와 `SPREADSHEET_ID`를 등록하세요.")
-        if _연동오류:
-            st.error(_연동오류)
+        st.info("☁️ Google Sheets 확인 중...")
 
     # ── 스케줄러 상태 카드 ────────────────────────────────────────
     now_h = datetime.now().hour
