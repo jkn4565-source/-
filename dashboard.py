@@ -427,21 +427,23 @@ def 자동_가격체크(source="자동"):
 
     def _스케줄러_저장(목록, ws):
         try:
-            # ✅ name/no 없는 빈 항목 제거
             목록 = [item for item in 목록 if str(item.get('name','')).strip() or str(item.get('no','')).strip()]
             if not 목록: return
             if ws:
-                ws.clear()
-                ws.append_row(["no","name","platform","url","price","상태"])
+                rows = [["no","name","platform","url","price","상태"]]
                 for item in 목록:
-                    no_val    = str(item.get('no','') or '')
-                    name_val  = str(item.get('name','') or '')
+                    name_val = str(item.get('name','') or '')
+                    no_val   = str(item.get('no','') or '')
                     if not name_val and not no_val: continue
-                    ws.append_row([no_val, name_val,
-                                   str(item.get('platform','도매꾹') or '도매꾹'),
-                                   str(item.get('url','') or ''),
-                                   int(item.get('price',0) or 0),
-                                   str(item.get('상태','판매중') or '판매중')])
+                    rows.append([
+                        no_val, name_val,
+                        str(item.get('platform','도매꾹') or '도매꾹'),
+                        str(item.get('url','') or ''),
+                        int(item.get('price',0) or 0),
+                        str(item.get('상태','판매중') or '판매중')
+                    ])
+                ws.clear()
+                ws.update('A1', rows)
             else:
                 재고파일_path = "재고모니터링.json"
                 json.dump(목록, open(재고파일_path,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
@@ -1204,8 +1206,8 @@ elif 메뉴 == "📦 재고/가격 알림":
         # ✅ 빈 데이터는 저장 안 함
         if not d:
             return
-        # ✅ name, price 없는 항목 필터링
-        d = [item for item in d if item.get('name','').strip() or item.get('no','').strip()]
+        # ✅ name, no 없는 항목 필터링
+        d = [item for item in d if str(item.get('name','')).strip() or str(item.get('no','')).strip()]
 
         ws = _get_sheet()
         if ws is None:
@@ -1213,19 +1215,23 @@ elif 메뉴 == "📦 재고/가격 알림":
             json.dump(d, open(재고파일,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
             return
         try:
-            ws.clear()
-            ws.append_row(["no","name","platform","url","price","상태"])
+            # ✅ clear+append 대신 한 번에 update로 저장 (타이밍 버그 방지)
+            rows = [["no","name","platform","url","price","상태"]]
             for item in d:
-                no_val       = str(item.get('no','') or '')
-                name_val     = str(item.get('name','') or '')
-                platform_val = str(item.get('platform','도매꾹') or '도매꾹')
-                url_val      = str(item.get('url','') or '')
-                price_val    = int(item.get('price', 0) or 0)
-                status_val   = str(item.get('상태','판매중') or '판매중')
-                # ✅ name이나 no 없으면 스킵
+                name_val = str(item.get('name','') or '')
+                no_val   = str(item.get('no','') or '')
                 if not name_val and not no_val:
                     continue
-                ws.append_row([no_val, name_val, platform_val, url_val, price_val, status_val])
+                rows.append([
+                    no_val,
+                    name_val,
+                    str(item.get('platform','도매꾹') or '도매꾹'),
+                    str(item.get('url','') or ''),
+                    int(item.get('price', 0) or 0),
+                    str(item.get('상태','판매중') or '판매중'),
+                ])
+            ws.clear()
+            ws.update('A1', rows)
         except Exception as e:
             st.warning(f"Google Sheets 저장 오류: {e}")
             재고파일 = "재고모니터링.json"
