@@ -1191,7 +1191,7 @@ elif 메뉴 == "📦 재고/가격 알림":
         # ✅ session_state 캐시 — 같은 세션에서 반복 호출 시 시트 재조회 안 함
         if '_재고캐시' in st.session_state and '_재고캐시_시간' in st.session_state:
             캐시경과 = (datetime.now() - st.session_state['_재고캐시_시간']).seconds
-            if 캐시경과 < 300:  # 5분 이내면 캐시 사용
+            if 캐시경과 < 1800:  # 30분 이내면 캐시 사용
                 return st.session_state['_재고캐시']
 
         ws = _get_sheet()
