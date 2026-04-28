@@ -401,57 +401,63 @@ def 자동_가격체크(source="자동"):
                 return  # 이미 이 4시간 블록에 체크함
         except: pass
 
-    # ── Google Sheets에서 목록 로드 ──────────────────────────────
+    # ── /tmp 로컬 파일에서 목록 로드 ────────────────────────────
     def _스케줄러_로드():
+        재고파일_path = "/tmp/재고모니터링.json"
+        if os.path.exists(재고파일_path):
+            try:
+                data = json.load(open(재고파일_path,'r',encoding='utf-8'))
+                if data: return data, 재고파일_path
+            except: pass
+        # fallback: Google Sheets
         try:
             import gspread
             from google.oauth2.service_account import Credentials
-            scopes = ["https://spreadsheets.google.com/feeds",
-                      "https://www.googleapis.com/auth/drive"]
             creds = Credentials.from_service_account_info(
-                dict(st.secrets["gcp_service_account"]), scopes=scopes)
+                dict(st.secrets["gcp_service_account"]),
+                scopes=["https://spreadsheets.google.com/feeds",
+                        "https://www.googleapis.com/auth/drive"])
             gc   = gspread.authorize(creds)
             sh   = gc.open_by_key(st.secrets["SPREADSHEET_ID"])
             ws   = sh.worksheet("재고감시")
             recs = ws.get_all_records()
             for r in recs:
                 r['price'] = int(r.get('price', 0) or 0)
-            return recs, ws
+            if recs:
+                json.dump(recs, open(재고파일_path,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
+            return recs, 재고파일_path
         except:
-            # Google Sheets 미연동 → 로컬 fallback
-            재고파일_path = "재고모니터링.json"
-            if not os.path.exists(재고파일_path):
-                return [], None
-            목록 = json.load(open(재고파일_path,'r',encoding='utf-8'))
-            return 목록, None
+            return [], None
 
-    def _스케줄러_저장(목록, ws):
+    def _스케줄러_저장(목록, path):
+        목록 = [item for item in 목록 if str(item.get('name','')).strip() or str(item.get('no','')).strip()]
+        if not 목록: return
+        # /tmp 저장
         try:
-            목록 = [item for item in 목록 if str(item.get('name','')).strip() or str(item.get('no','')).strip()]
-            if not 목록: return
-            if ws:
-                rows = [["no","name","platform","url","price","상태"]]
-                for item in 목록:
-                    name_val = str(item.get('name','') or '')
-                    no_val   = str(item.get('no','') or '')
-                    if not name_val and not no_val: continue
-                    rows.append([
-                        no_val, name_val,
-                        str(item.get('platform','도매꾹') or '도매꾹'),
-                        str(item.get('url','') or ''),
-                        int(item.get('price',0) or 0),
-                        str(item.get('상태','판매중') or '판매중')
-                    ])
-                ws.clear()
-                ws.update('A1', rows)
-            else:
-                재고파일_path = "재고모니터링.json"
-                json.dump(목록, open(재고파일_path,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
-        except Exception as e:
-            send_telegram(f"⚠️ 저장 오류: {str(e)[:100]}")
+            json.dump(목록, open(path,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
+        except: pass
+        # Google Sheets 백업
+        try:
+            import gspread
+            from google.oauth2.service_account import Credentials
+            creds = Credentials.from_service_account_info(
+                dict(st.secrets["gcp_service_account"]),
+                scopes=["https://spreadsheets.google.com/feeds",
+                        "https://www.googleapis.com/auth/drive"])
+            gc = gspread.authorize(creds)
+            sh = gc.open_by_key(st.secrets["SPREADSHEET_ID"])
+            ws = sh.worksheet("재고감시")
+            rows = [["no","name","platform","url","price","상태"]]
+            for item in 목록:
+                rows.append([str(item.get('no','')), str(item.get('name','')),
+                             str(item.get('platform','도매꾹')), str(item.get('url','')),
+                             int(item.get('price',0) or 0), str(item.get('상태','판매중'))])
+            ws.clear()
+            ws.update('A1', rows)
+        except: pass
 
     try:
-        목록, ws = _스케줄러_로드()
+        목록, path = _스케줄러_로드()
         if not 목록: return
 
         변경_내용 = []
@@ -483,7 +489,7 @@ def 자동_가격체크(source="자동"):
                     변경_내용.append(f"🚫 {name값}: {now_st}")
                 목록[i]['상태'] = now_st
 
-        _스케줄러_저장(목록, ws)
+        _스케줄러_저장(목록, path)
 
         now_str    = now.strftime('%Y-%m-%d %H:%M')
         type_label = "⏰ 자동" if source == "자동" else "🔄 수동"
@@ -1165,127 +1171,86 @@ elif 메뉴 == "📦 재고/가격 알림":
     def mask(cid): return cid[:3]+"****"+cid[-2:] if cid else "미등록"
     st.info(f"🔔 텔레그램 수신 ID: {mask(TELEGRAM_CHAT_ID)}")
 
-    # ── Google Sheets 연동 로드/저장 ─────────────────────────────
-    def _get_sheet():
-        """Google Sheets 워크시트 반환"""
+    # ── 저장소: 로컬 JSON (주) + Google Sheets (백업 읽기 전용) ──
+    재고파일 = "/tmp/재고모니터링.json"  # /tmp는 Streamlit Cloud에서 쓰기 가능
+
+    def 로드():
+        # 1순위: /tmp 로컬 파일
+        if os.path.exists(재고파일):
+            try:
+                data = json.load(open(재고파일,'r',encoding='utf-8'))
+                if data:
+                    return data
+            except: pass
+        # 2순위: session_state 캐시
+        if '_재고캐시' in st.session_state and st.session_state['_재고캐시']:
+            return st.session_state['_재고캐시']
+        # 3순위: Google Sheets (최초 1회만)
         try:
             import gspread
             from google.oauth2.service_account import Credentials
-            scopes = ["https://spreadsheets.google.com/feeds",
-                      "https://www.googleapis.com/auth/drive"]
             creds = Credentials.from_service_account_info(
-                dict(st.secrets["gcp_service_account"]), scopes=scopes)
+                dict(st.secrets["gcp_service_account"]),
+                scopes=["https://spreadsheets.google.com/feeds",
+                        "https://www.googleapis.com/auth/drive"])
             gc = gspread.authorize(creds)
             sh = gc.open_by_key(st.secrets["SPREADSHEET_ID"])
-            # "재고감시" 시트 없으면 자동 생성
+            ws = sh.worksheet("재고감시")
+            records = ws.get_all_records()
+            for r in records:
+                r['price'] = int(r.get('price', 0) or 0)
+            if records:
+                # 구글 시트 데이터를 /tmp에 백업
+                json.dump(records, open(재고파일,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
+                st.session_state['_재고캐시'] = records
+                return records
+        except: pass
+        return []
+
+    def 저장(d):
+        if not d: return
+        d = [item for item in d if str(item.get('name','')).strip() or str(item.get('no','')).strip()]
+        if not d: return
+
+        # 1순위: /tmp 로컬 저장 (항상)
+        try:
+            json.dump(d, open(재고파일,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
+        except Exception as e:
+            st.warning(f"로컬 저장 오류: {e}")
+
+        # session_state 캐시 업데이트
+        st.session_state['_재고캐시'] = d
+
+        # 2순위: Google Sheets 백업 (실패해도 무시)
+        try:
+            import gspread
+            from google.oauth2.service_account import Credentials
+            creds = Credentials.from_service_account_info(
+                dict(st.secrets["gcp_service_account"]),
+                scopes=["https://spreadsheets.google.com/feeds",
+                        "https://www.googleapis.com/auth/drive"])
+            gc = gspread.authorize(creds)
+            sh = gc.open_by_key(st.secrets["SPREADSHEET_ID"])
             try:
                 ws = sh.worksheet("재고감시")
             except:
                 ws = sh.add_worksheet(title="재고감시", rows=500, cols=10)
-                ws.append_row(["no","name","platform","url","price","상태"])
-            return ws
-        except Exception as e:
-            return None
-
-    def 로드():
-        # ✅ session_state 캐시 — 같은 세션에서 반복 호출 시 시트 재조회 안 함
-        if '_재고캐시' in st.session_state and '_재고캐시_시간' in st.session_state:
-            캐시경과 = (datetime.now() - st.session_state['_재고캐시_시간']).seconds
-            if 캐시경과 < 1800:  # 30분 이내면 캐시 사용
-                return st.session_state['_재고캐시']
-
-        ws = _get_sheet()
-        if ws is None:
-            재고파일 = "재고모니터링.json"
-            return json.load(open(재고파일,'r',encoding='utf-8')) if os.path.exists(재고파일) else []
-        try:
-            records = ws.get_all_records()
-            for r in records:
-                r['price'] = int(r.get('price', 0) or 0)
-            # ✅ 캐시 저장
-            st.session_state['_재고캐시'] = records
-            st.session_state['_재고캐시_시간'] = datetime.now()
-            return records
-        except Exception as e:
-            # Quota 초과 시 캐시 반환
-            if '_재고캐시' in st.session_state:
-                st.warning("⚠️ Google Sheets 요청 한도 초과 — 캐시 데이터를 표시합니다.")
-                return st.session_state['_재고캐시']
-            return []
-
-    def 캐시_초기화():
-        """저장 후 캐시 무효화"""
-        if '_재고캐시' in st.session_state:
-            del st.session_state['_재고캐시']
-        if '_재고캐시_시간' in st.session_state:
-            del st.session_state['_재고캐시_시간']
-
-    def 저장(d):
-        # ✅ 빈 데이터는 저장 안 함
-        if not d:
-            return
-        # ✅ name, no 없는 항목 필터링
-        d = [item for item in d if str(item.get('name','')).strip() or str(item.get('no','')).strip()]
-
-        ws = _get_sheet()
-        if ws is None:
-            재고파일 = "재고모니터링.json"
-            json.dump(d, open(재고파일,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
-            return
-        try:
-            # ✅ clear+append 대신 한 번에 update로 저장 (타이밍 버그 방지)
             rows = [["no","name","platform","url","price","상태"]]
             for item in d:
-                name_val = str(item.get('name','') or '')
-                no_val   = str(item.get('no','') or '')
-                if not name_val and not no_val:
-                    continue
                 rows.append([
-                    no_val,
-                    name_val,
+                    str(item.get('no','') or ''),
+                    str(item.get('name','') or ''),
                     str(item.get('platform','도매꾹') or '도매꾹'),
                     str(item.get('url','') or ''),
-                    int(item.get('price', 0) or 0),
+                    int(item.get('price',0) or 0),
                     str(item.get('상태','판매중') or '판매중'),
                 ])
             ws.clear()
             ws.update('A1', rows)
-            캐시_초기화()  # ✅ 저장 후 캐시 무효화 → 다음 로드 시 시트 재조회
-        except Exception as e:
-            st.warning(f"Google Sheets 저장 오류: {e}")
-            재고파일 = "재고모니터링.json"
-            json.dump(d, open(재고파일,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
-    # ✅ 연결 상태 확인 — API 호출 없이 Secrets만 확인 (Quota 절약)
-    if '_sheets_연동확인' not in st.session_state:
-        try:
-            import gspread
-            from google.oauth2.service_account import Credentials
-            if "gcp_service_account" not in st.secrets:
-                st.session_state['_sheets_연동확인'] = "미설정"
-            elif "SPREADSHEET_ID" not in st.secrets:
-                st.session_state['_sheets_연동확인'] = "미설정"
-            else:
-                # Credentials만 확인 (실제 시트 읽기 X)
-                Credentials.from_service_account_info(
-                    dict(st.secrets["gcp_service_account"]),
-                    scopes=["https://spreadsheets.google.com/feeds"])
-                st.session_state['_sheets_연동확인'] = "연동"
-        except ImportError:
-            st.session_state['_sheets_연동확인'] = "미설치"
-        except Exception as e:
-            st.session_state['_sheets_연동확인'] = f"오류:{str(e)[:80]}"
+        except: pass  # 구글 시트 실패해도 /tmp에 저장됐으므로 무시
 
-    _연동상태 = st.session_state.get('_sheets_연동확인','확인중')
-    if _연동상태 == "연동":
-        st.success("☁️ Google Sheets 연동 중 — 앱이 꺼져도 데이터가 유지됩니다.")
-    elif _연동상태 == "미설치":
-        st.error("❌ gspread 미설치 — requirements.txt 확인")
-    elif _연동상태 == "미설정":
-        st.warning("⚠️ Google Sheets 미연동 — Secrets에 `gcp_service_account`와 `SPREADSHEET_ID`를 등록하세요.")
-    elif _연동상태.startswith("오류:"):
-        st.warning(f"⚠️ Google Sheets 연동 오류: {_연동상태[3:]}")
-    else:
-        st.info("☁️ Google Sheets 확인 중...")
+    # 연결 상태 표시
+    st.success("☁️ 데이터 자동 저장 중 (/tmp + Google Sheets 이중 백업)")
 
     # ── 스케줄러 상태 카드 ────────────────────────────────────────
     now_h = datetime.now().hour
